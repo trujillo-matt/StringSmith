@@ -279,6 +279,27 @@ with `Magick.NET-Q8-AnyCPU` pinned. Rules:
 Solution file is `StringSmith.slnx` (the .NET 10 default format), with solution folders
 `Vendor` and `External`.
 
+## Status: what is built and proven headlessly
+
+Steps 1-7 of `docs/PLAN-milestone-1.md` are implemented and tested on Linux x86_64 with
+the .NET 10 SDK. Run everything with `dotnet build StringSmith.slnx -c Release` and then
+each `tests/*/bin/Release/net10.0/*.Tests.dll --colours 0 --summary` (Expecto exes; exit
+code 0 means green; `dotnet test` is not wired up).
+
+| Project | Tests | What it proves |
+|---|---|---|
+| Core | (types) | neutral tab model, tick/ms units, unrolled timeline, sidecar seam |
+| GuitarPro | 29 | GP3/5/6/7 load, repeat unrolling, stepped tempo, tuning/strings, techniques, sync points, thread safety, garbage handling |
+| Sync | 24 | nominal time, anchor warp, drift report, FsCheck monotonicity |
+| Conversion | 28 | ebeats with measure markers, notes/chords/templates/handshapes/anchors, ties, slides, bends, tuning, XML round trip |
+| Audio | 18 | FFmpeg/Wwise detection incl. Wwise 2024+, ffprobe tag parsing, WAV normalise args |
+| Pipeline | 9 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; wrong-key decrypt rejected; failure leaves converted XML on disk |
+
+The round trip's packed XML had 14 DD levels and 8-10 phrases from our single-level input,
+so PhraseGenerator and the DD generator accept what Conversion emits. WEM encoding is the
+one stage not exercised here (no Wwise); the MIT WEM fixtures from iminashi's integration
+tests stand in, referenced in place.
+
 ## Open questions
 
 - **Audio sync.** A GP tempo map is beats and whole-number BPM, not absolute seconds

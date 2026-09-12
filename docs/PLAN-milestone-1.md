@@ -1,6 +1,6 @@
 # StringSmith — Milestone 1 implementation plan
 
-Status: **awaiting approval. No implementation code written yet.**
+Status: **approved; steps 1-7 implemented and green headlessly (see CLAUDE.md, Status). Step 8 (UI) in progress.**
 
 Everything below rests on source I read in `iminashi/Rocksmith2014.NET` at commit
 `b87c9a3` and `CoderLine/alphaTab` at current `main`, plus spikes run in this
