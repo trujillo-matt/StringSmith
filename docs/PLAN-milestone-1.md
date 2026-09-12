@@ -1,6 +1,6 @@
 # StringSmith — Milestone 1 implementation plan
 
-Status: **approved; steps 1-7 implemented and green headlessly (see CLAUDE.md, Status). Step 8 (UI) in progress.**
+Status: **steps 1-9 implemented; 128 tests green headlessly; osx-arm64 bundle structure verified (see CLAUDE.md, Status). Steps 10-11 need a Mac.**
 
 Everything below rests on source I read in `iminashi/Rocksmith2014.NET` at commit
 `b87c9a3` and `CoderLine/alphaTab` at current `main`, plus spikes run in this

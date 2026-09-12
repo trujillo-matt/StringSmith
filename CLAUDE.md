@@ -293,12 +293,26 @@ code 0 means green; `dotnet test` is not wired up).
 | Sync | 24 | nominal time, anchor warp, drift report, FsCheck monotonicity |
 | Conversion | 28 | ebeats with measure markers, notes/chords/templates/handshapes/anchors, ties, slides, bends, tuning, XML round trip |
 | Audio | 18 | FFmpeg/Wwise detection incl. Wwise 2024+, ffprobe tag parsing, WAV normalise args |
+| App | 20 | every section renders in every model state headlessly; prefill precedence, role suggestion, NotSynced-on-defaults, build gate |
 | Pipeline | 9 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; wrong-key decrypt rejected; failure leaves converted XML on disk |
 
 The round trip's packed XML had 14 DD levels and 8-10 phrases from our single-level input,
 so PhraseGenerator and the DD generator accept what Conversion emits. WEM encoding is the
 one stage not exercised here (no Wwise); the MIT WEM fixtures from iminashi's integration
 tests stand in, referenced in place.
+
+Step 8 (App) builds with zero warnings. Step 9: `scripts/publish-mac.sh arm64` cross-publishes
+from Linux and the resulting `StringSmith.app` was inspected: the apphost is Mach-O arm64,
+`Magick.Native-Q8-arm64.dll.dylib` is present (the AnyCPU swap delivered it), Avalonia/Skia/
+HarfBuzz natives are universal, 280 files, `Info.plist` versioned. Steps 10 and 11 (DLC Builder
+differential, in-game test) need a Mac and are the user's.
+
+Steps 1-7 are covered by `Directory.Build.props` nullness checking; the App has it disabled
+because Avalonia's annotations would turn view code into null-matches for no safety gain.
+Expected compile-time traps, all hit and fixed during this work: `Path.*` helpers return
+`string | null` on .NET 10; `[<AutoOpen>]` module types (`LevelCountGeneration`, `Issue`)
+resolve only via `open`, not full qualification, and need a direct project reference from
+test projects; F# forbids `\"` inside `$"…"` holes and misparses `{DateTime.Now:HH:mm:ss}`.
 
 ## Open questions
 
