@@ -200,6 +200,16 @@ BS.1770 integrated loudness, reference **-16 LUFS**, `Math.Round(-16. - loudness
    This swap is mandatory, not cosmetic.
 6. **`Sse2.IsSupported` is false on arm64**, so `Rocksmith2014.SNG` falls back to its
    scalar AES-CTR path. Correct, just slower. Not a blocker.
+7. **`<Platforms>x64</Platforms>` does NOT block `osx-arm64`.** Tested: `Rocksmith2014.SNG`
+   (no RID list) and `Rocksmith2014.Audio` (RID list omitting arm64) both build clean with
+   `-r osx-arm64`. `Platforms` only enumerates valid `$(Platform)` configuration values;
+   `RuntimeIdentifier` is orthogonal. No override needed.
+8. **arm64 ships without `ww2ogg`/`revorb`.** `Rocksmith2014.Audio` gates its bundled tools on
+   `'$(RuntimeIdentifier)'=='osx-x64'` exactly, and the `Tools/mac/` binaries are x86_64
+   Mach-O anyway. They are used only for WEM **decode** (`Conversion.wemToOgg`,
+   `withTempOggFile`), which our encode-only pipeline never calls. Known gap, documented,
+   not on the Milestone 1 path. Also: Audio's Debug configuration hard-sets
+   `RuntimeIdentifier=osx-x64` on macOS; a global `-r` passed from our build overrides it.
 
 ## AlphaTab to Rocksmith unit conversions
 
@@ -225,6 +235,29 @@ BS.1770 integrated loudness, reference **-16 LUFS**, `Math.Round(-16. - loudness
   file's "Anette voice" track is MIDI program 73, flute).
 
 ---
+
+## Build layout: the vendor shim
+
+The submodule's `Directory.Build.props` and `Directory.Packages.props` do **not** chain to
+ours (no `GetPathOfFileAbove` import), so they shadow anything at the repo root for every
+project under `external/`. We cannot change a package pin in the submodule from outside it.
+
+The only project that needs a different pin is `Rocksmith2014.DLCProject` (sole consumer of
+Magick.NET). So `src/Vendor/Rocksmith2014.DLCProject/Rocksmith2014.DLCProject.fsproj` is an
+**own project file that compiles the submodule's sources unmodified** via
+`<Compile Include="$(RocksmithNetRoot)src/Rocksmith2014.DLCProject/...">`, under our props,
+with `Magick.NET-Q8-AnyCPU` pinned. Rules:
+
+- The `Compile` list must stay byte-for-byte in upstream order (F# is order-dependent).
+  When bumping the submodule commit, regenerate the list from upstream's `.fsproj` and diff.
+- `AssemblyName` and the two `EmbeddedResource` `LogicalName`s are pinned so upstream's
+  `EmbeddedFileProvider(...).GetFileInfo("res/rsenumerable_*.flat")` still resolves.
+  Verified: the shim's manifest names match the original DLL exactly.
+- Every other library is referenced straight from the submodule, unpatched. **Never edit
+  files under `external/`.**
+
+Solution file is `StringSmith.slnx` (the .NET 10 default format), with solution folders
+`Vendor` and `External`.
 
 ## Open questions
 

@@ -1,0 +1,15 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+.DS_Store
+*.swp
+TestResults/
+artifacts/
+publish/
+*.psarc
+*.wem
+*.sng
+.work/

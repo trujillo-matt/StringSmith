@@ -76,9 +76,11 @@ technique-specific fixtures (`bends.gp5`, `slides.gp5`, `harmonic-types.gp5`,
 
 Verified: the two-line change builds clean end to end.
 
-**Open risk to test in step 1:** several projects declare `<Platforms>x64</Platforms>`.
-Whether that conflicts with `-r osx-arm64` is untested. If it does, the fix is a
-`Directory.Build.props` override in our repo. I will not assume either way.
+**Resolved in step 1:** `<Platforms>x64</Platforms>` does **not** conflict with
+`-r osx-arm64`. Tested on `Rocksmith2014.SNG` and `Rocksmith2014.Audio`; both build clean
+for arm64. No override needed. The Magick swap is delivered by an own project file at
+`src/Vendor/Rocksmith2014.DLCProject/` that compiles the submodule's sources unmodified
+(rationale in `CLAUDE.md`, "Build layout").
 
 ---
 
@@ -342,7 +344,7 @@ local `.app` is fine), no project save/load, no batch processing, no tab or wave
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| `<Platforms>x64</Platforms>` blocks `osx-arm64` | high for the native requirement | resolve in step 1 before building anything on top |
+| ~~`<Platforms>x64</Platforms>` blocks `osx-arm64`~~ | resolved | tested in step 1: it does not. Both SNG and Audio build for arm64 |
 | Wwise untestable here; version regex stops at 2023 | high — no WEM means no package | widen the regex; preflight at launch; surface the exact failure |
 | Beat map wrong, so phrases + DD + grid all wrong | high | Ebeats is step 5's primary test target, with measure markers asserted |
 | Linear tempo ramps mishandled | high, and silent | integrate ramps; test against the Nightwish file's bars 85-94 |
