@@ -11,6 +11,7 @@ open StringSmith.Audio
 open StringSmith.GuitarPro
 open StringSmith.Pipeline
 open StringSmith.App
+open StringSmith.App.Controls
 open StringSmith.App.Model
 
 /// Only dialog branches dereference the window; none of these tests take them.
@@ -80,6 +81,49 @@ let views =
     ]
 
 [<Tests>]
+let guardedTextBox =
+    // Regression test for the bug the first macOS run found: the Year field displayed
+    // "440", the Tuning frequency value from the row below it. Cause was that Avalonia's
+    // Text setter raises a change notification, so every render that assigned Text
+    // dispatched a "user edited this" message; with a recycled control that message went
+    // to the wrong field's handler. GuardedTextBox suppresses notifications originating
+    // from the view. This exercises that mechanism directly.
+    testList "GuardedTextBox suppresses view-originated changes" [
+        test "the text attribute does not fire the callback, but a direct edit does" {
+            let fired = System.Collections.Generic.List<string>()
+            let box = GuardedTextBox()
+            box.OnTextChangedCallback <- fired.Add
+
+            // What the view does every render. Must be silent.
+            let applyFromView (value: string) =
+                box.Suppress <- true
+                box.Text <- value
+                box.Suppress <- false
+
+            applyFromView "440"
+            applyFromView "2011"
+            applyFromView "440"
+            Expect.isEmpty fired $"view-originated assignments must not dispatch, got %A{List.ofSeq fired}"
+
+            // What a user typing does: the same property, without the suppression flag.
+            box.Text <- "2012"
+            Expect.equal (List.ofSeq fired) [ "2012" ] "a real edit must dispatch exactly once"
+
+            applyFromView "1999"
+            Expect.equal (List.ofSeq fired) [ "2012" ] "a later view assignment must stay silent"
+        }
+
+        test "a null text reaches the callback as an empty string" {
+            let fired = System.Collections.Generic.List<string>()
+            let box = GuardedTextBox()
+            box.OnTextChangedCallback <- fired.Add
+            box.Text <- "x"
+            box.Text <- null
+            Expect.equal (List.ofSeq fired) [ "x"; "" ] "null is normalised, not passed through"
+        }
+    ]
+
+[<Tests>]
 let prefill =
     testList "metadata prefill precedence" [
         test "tab fills empty fields and labels them" {
@@ -96,6 +140,14 @@ let prefill =
             Expect.equal (m.Meta.Album.Value, m.Meta.Album.Source) ("Imaginaerum", FromTab) "no album tag: tab value kept"
             Expect.equal (m.Meta.Year.Value, m.Meta.Year.Source) ("2011", FromAudio) "year"
         }
+        test "editing the tuning frequency never touches the Year field" {
+            let m = ready ()
+            let before = m.Meta.Year
+            let after = m |> ups [ SetTuningPitch "432"; SetTuningPitch "440" ]
+            Expect.equal after.Meta.Year before "Year is independent of tuning frequency"
+            Expect.equal after.Meta.TuningPitch "440" "tuning frequency took the edit"
+        }
+
         test "a user edit is never overwritten by a later prefill" {
             let m = loaded () |> up (SetTitle "My Title") |> up (AudioProbeFinished(audio.Path, Ok audio))
             Expect.equal (m.Meta.Title.Value, m.Meta.Title.Source) ("My Title", FromUser) "user wins"

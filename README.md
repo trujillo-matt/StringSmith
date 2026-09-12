@@ -42,14 +42,22 @@ Requires the .NET 10 SDK (`global.json` pins 10.0.x) and `git submodule update -
 
 ```sh
 dotnet build StringSmith.slnx -c Release
-# tests are Expecto executables; exit code 0 is green
-for t in tests/*/bin/Release/net10.0/*.Tests.dll; do dotnet "$t" --colours 0 --summary; done
+
+# Tests are Expecto executables, not `dotnet test`; exit code 0 is green.
+# Each suite is independent, so run them separately if one gives trouble.
+# Pipeline is last here because it is the only slow one (it builds real PSARCs).
+for s in App Audio Conversion GuitarPro Sync Pipeline; do
+  dotnet "tests/StringSmith.$s.Tests/bin/Release/net10.0/StringSmith.$s.Tests.dll" --colours 0 --summary
+done
+
 # unsigned .app bundle
 scripts/publish-mac.sh arm64    # or x64
 ```
 
 First launch of the unsigned bundle: right-click, Open. Code signing and notarization are
-out of scope for this milestone.
+out of scope for this milestone. A bundle you built yourself carries no quarantine flag and
+opens without the prompt; the right-click path only matters for one you downloaded or
+copied from another machine.
 
 ## How it works, briefly
 
@@ -67,12 +75,16 @@ against source, including two corrections to the original brief.
 
 ## What still needs a Mac
 
-Development and testing so far happened on headless Linux. Verified there: every pipeline
-stage, the full PSARC round trip on both platforms, the app's view and update logic, and
-the `osx-arm64` bundle's structure and native libraries. **Not yet verified:** the app
-window on screen, native dialogs and drag-and-drop in practice, Wwise encoding with a real
-install, and, the one that matters, the package loading and playing in Rocksmith 2014 with
-DD working. That last step is a manual gate and cannot be automated.
+Most development happened on headless Linux, but the app has now had a first run on an
+Apple Silicon Mac. Confirmed there: the window renders, dependency detection finds Homebrew
+tools and correctly reports Wwise missing, native file dialogs and drag-and-drop work, and
+the App, Audio, Conversion and GuitarPro suites pass on arm64. That run also turned up two
+real bugs, both since fixed — see "First run on real macOS" in `CLAUDE.md`.
+
+**Still not verified:** a full build with a real Wwise install (so WEM encoding end to end),
+the Gatekeeper right-click-Open path for a transferred bundle, the differential diff against
+DLC Builder, and the one that matters most — the package loading and playing in Rocksmith
+2014 with DD working. That last step is a manual gate and cannot be automated.
 
 ## Licences
 

@@ -8,6 +8,7 @@ open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Avalonia.Layout
 open Avalonia.Media
+open StringSmith.App.Controls
 
 let private block (s: string) (attrs: IAttr<TextBlock> list) : IView =
     TextBlock.create ([ TextBlock.text s; TextBlock.textWrapping TextWrapping.Wrap ] @ attrs) :> IView
@@ -50,18 +51,36 @@ let section (title: string) (enabled: bool) (disabledReason: string) (content: I
     ] :> IView
 
 /// Label on the left, control and its notes on the right.
+///
+/// The right-hand column ALWAYS has exactly two children: the control, then one container
+/// holding the notes. Notes come and go as validation state changes, and if they were
+/// siblings of the control then that changing count would shift sibling indices and let
+/// FuncUI recycle a control into a different field's slot. Keeping the variation inside a
+/// dedicated container pins every control to a stable position. See
+/// `Controls/GuardedTextBox.fs` for what that bug looked like in practice.
 let labelled (label: string) (control: IView) (notes: IView list) : IView =
     Grid.create [
         Grid.columnDefinitions "170,*"
         Grid.margin (Thickness(0.0, 2.0))
         Grid.children [
             TextBlock.create [ Grid.column 0; TextBlock.text label; TextBlock.verticalAlignment VerticalAlignment.Center ]
-            StackPanel.create [ Grid.column 1; StackPanel.spacing 2.0; StackPanel.children (control :: notes) ]
+            StackPanel.create [
+                Grid.column 1
+                StackPanel.spacing 2.0
+                StackPanel.children [
+                    control
+                    StackPanel.create [ StackPanel.spacing 2.0; StackPanel.children notes ]
+                ]
+            ]
         ]
     ] :> IView
 
 let textField (label: string) (value: string) (sourceLabel: string) (onChange: string -> unit) (notes: IView list) : IView =
-    let box = TextBox.create [ TextBox.text value; TextBox.onTextChanged onChange ] :> IView
+    let box =
+        GuardedTextBox.create [
+            GuardedTextBox.text value
+            GuardedTextBox.onTextChanged onChange
+        ] :> IView
     labelled label box ((if sourceLabel = "" then [] else [ dim sourceLabel ]) @ notes)
 
 /// A path display with a Choose button; drop targets are handled at the window level.

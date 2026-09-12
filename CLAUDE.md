@@ -293,8 +293,8 @@ code 0 means green; `dotnet test` is not wired up).
 | Sync | 24 | nominal time, anchor warp, drift report, FsCheck monotonicity |
 | Conversion | 28 | ebeats with measure markers, notes/chords/templates/handshapes/anchors, ties, slides, bends, tuning, XML round trip |
 | Audio | 18 | FFmpeg/Wwise detection incl. Wwise 2024+, ffprobe tag parsing, WAV normalise args |
-| App | 20 | every section renders in every model state headlessly; prefill precedence, role suggestion, NotSynced-on-defaults, build gate |
-| Pipeline | 9 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; wrong-key decrypt rejected; failure leaves converted XML on disk |
+| App | 23 | every section renders in every model state headlessly; prefill precedence, role suggestion, NotSynced-on-defaults, build gate |
+| Pipeline | 9 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; per-platform keys proved by ciphertext divergence; failure leaves converted XML on disk |
 
 The round trip's packed XML had 14 DD levels and 8-10 phrases from our single-level input,
 so PhraseGenerator and the DD generator accept what Conversion emits. WEM encoding is the
@@ -306,6 +306,51 @@ from Linux and the resulting `StringSmith.app` was inspected: the apphost is Mac
 `Magick.Native-Q8-arm64.dll.dylib` is present (the AnyCPU swap delivered it), Avalonia/Skia/
 HarfBuzz natives are universal, 280 files, `Info.plist` versioned. Steps 10 and 11 (DLC Builder
 differential, in-game test) need a Mac and are the user's.
+
+## First run on real macOS (arm64)
+
+Verified on an Apple Silicon Mac (T6000, 10 cores, 16 GB, macOS 27) by a Cowork session.
+This is the first time any of it ran on a Mac. What it settled:
+
+- The bundle launches and the window renders correctly: dark theme, 1120x908, seven
+  sections, bottom bar.
+- Dependency probing works. FFmpeg and ffprobe were found through the Homebrew path, which
+  is the case the search order exists for (a Finder-launched app inherits no shell PATH).
+  Wwise was absent and reported with the actionable message.
+- Native `NSOpenPanel` dialogs open from the Choose buttons. Drag and drop works for both
+  tabs and audio.
+- Metadata prefill, role suggestion, the red NOT SYNCED chip on defaults, the drift readout,
+  the ramped-bar warning and the itemised build blockers all behaved as designed.
+- App, Audio, Conversion and GuitarPro suites passed on arm64 hardware.
+- The bundle built locally carries no quarantine flag, so the **right-click > Open Gatekeeper
+  path is still unexercised.** It needs a bundle that has been downloaded or transferred.
+
+Two real bugs came out of that run. Both are fixed.
+
+1. **The Year field displayed "440"**, the Tuning frequency value from the row below it.
+   Avalonia's `TextBox.Text` setter raises a change notification, and FuncUI's
+   `TextBox.onTextChanged` is wired to it, so every render that assigned `Text` dispatched a
+   "the user edited this" message; when FuncUI recycled a control into a different slot, that
+   message reached the wrong field's handler. Fixed in two places:
+   `Controls/GuardedTextBox.fs` suppresses view-originated notifications (the mechanism
+   iminashi's `FixedTextBox.fs` uses, for the same reason on this same stack), and
+   `Views/Widgets.fs` now gives every field row a constant child count so controls are not
+   reassigned between slots at all. Regression-tested headlessly: the control instantiates
+   without an Avalonia Application, so the suppression is asserted directly.
+2. **The Pipeline suite hung for over 20 minutes** at 100% CPU with RSS climbing to 2.1 GB
+   and every stack sample inside GC internals. **The cause was the test, not the pipeline.**
+   Measured on Linux: `Build.run` takes 1.7 s end to end, Packaging 0.7 s, Validating 27 ms,
+   `ArrangementChecker` 3-7 ms, 96 MB total allocated. The old
+   "the Mac SNG does not decrypt with the PC key" test fed wrong-key garbage to SNG's binary
+   reader, which does `Array.init (reader.ReadInt32())` (`BinaryHelpers.fs:28`) — a garbage
+   length field asks for up to 2^31 elements. On Linux that allocation threw immediately and
+   the test passed; on a Mac with ~73 MB of free pages it became an unbounded GC thrash.
+   **Never hand a wrong key to a binary parser.** Replaced with a test that proves the same
+   property without parsing anything: identical plaintext under two keys must produce
+   different ciphertext. Measured: the two SNGs are byte-identical for the first 24 bytes
+   (magic `0x4A`, header, and the 16-byte zero IV, which independently re-confirms the
+   zero-IV finding above) and then 99% of bytes differ. Both build calls in that suite now
+   carry a 10-minute liveness timeout so a wedge fails loudly instead of spinning.
 
 Steps 1-7 are covered by `Directory.Build.props` nullness checking; the App has it disabled
 because Avalonia's annotations would turn view code into null-matches for no safety gain.
