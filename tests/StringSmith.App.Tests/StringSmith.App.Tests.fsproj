@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Headless tests of the App's Elmish layer. Views are pure FuncUI descriptions and
+    update only touches the window inside dialog branches, so every section renders
+    and every state transition runs with no display and no Avalonia platform started.
+    What this cannot prove: layout, real control behaviour, dialogs. Those need a Mac.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="AppTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="YoloDev.Expecto.TestSdk" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/StringSmith.App/StringSmith.App.fsproj" />
+    <ProjectReference Include="../../src/StringSmith.Core/StringSmith.Core.fsproj" />
+    <ProjectReference Include="../../src/StringSmith.Sync/StringSmith.Sync.fsproj" />
+    <ProjectReference Include="../../src/StringSmith.Conversion/StringSmith.Conversion.fsproj" />
+    <ProjectReference Include="../../src/StringSmith.GuitarPro/StringSmith.GuitarPro.fsproj" />
+    <ProjectReference Include="../../src/StringSmith.Audio/StringSmith.Audio.fsproj" />
+    <ProjectReference Include="../../src/StringSmith.Pipeline/StringSmith.Pipeline.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.DD/Rocksmith2014.DD.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.XML.Processing/Rocksmith2014.XML.Processing.fsproj" />
+  </ItemGroup>
+</Project>

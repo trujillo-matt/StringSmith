@@ -24,6 +24,7 @@
     <Project Path="src/Vendor/Rocksmith2014.DLCProject/Rocksmith2014.DLCProject.fsproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/StringSmith.App/StringSmith.App.fsproj" />
     <Project Path="src/StringSmith.Audio/StringSmith.Audio.fsproj" />
     <Project Path="src/StringSmith.Conversion/StringSmith.Conversion.fsproj" />
     <Project Path="src/StringSmith.Core/StringSmith.Core.fsproj" />
@@ -32,6 +33,7 @@
     <Project Path="src/StringSmith.Sync/StringSmith.Sync.fsproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/StringSmith.App.Tests/StringSmith.App.Tests.fsproj" />
     <Project Path="tests/StringSmith.Audio.Tests/StringSmith.Audio.Tests.fsproj" />
     <Project Path="tests/StringSmith.Conversion.Tests/StringSmith.Conversion.Tests.fsproj" />
     <Project Path="tests/StringSmith.GuitarPro.Tests/StringSmith.GuitarPro.Tests.fsproj" />
