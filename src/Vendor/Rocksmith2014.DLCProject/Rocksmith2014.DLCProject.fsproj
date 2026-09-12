@@ -1,0 +1,87 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    VENDOR SHIM. Compiles iminashi/Rocksmith2014.NET's DLCProject sources UNMODIFIED,
+    straight out of the pinned submodule, but under this repository's build props.
+
+    Why this exists instead of referencing the submodule's own .fsproj:
+      1. Upstream pins Magick.NET-Q8-x64, which ships no osx-arm64 native. Native
+         Apple Silicon is a hard requirement, so we pin Magick.NET-Q8-AnyCPU instead
+         (Directory.Packages.props). The submodule's Directory.Packages.props does not
+         chain to ours, so the only way to change the pin without patching the
+         submodule is to own the project file.
+      2. Upstream's <RuntimeIdentifiers> list omits osx-arm64.
+      3. Magick.NET-Q8-x64 14.10.4 carries 81 NuGet audit advisories that upstream's
+         TreatWarningsAsErrors escalates to build errors. The AnyCPU pin clears them.
+
+    Keep the Compile list byte-for-byte in upstream's order: F# compilation is
+    order-dependent. When bumping the submodule commit, regenerate this list from
+    upstream's .fsproj and diff.
+
+    AssemblyName and LogicalName are pinned so that upstream's
+    EmbeddedFileProvider(Assembly.GetExecutingAssembly()).GetFileInfo("res/...")
+    lookups still resolve to the same manifest resource names.
+  -->
+  <PropertyGroup>
+    <AssemblyName>Rocksmith2014.DLCProject</AssemblyName>
+    <RootNamespace>Rocksmith2014.DLCProject</RootNamespace>
+    <Nullable>disable</Nullable>
+    <UpstreamDir>$(RocksmithNetRoot)src/Rocksmith2014.DLCProject/</UpstreamDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(UpstreamDir)Utils.fs" Link="Utils.fs" />
+    <Compile Include="$(UpstreamDir)AppId.fs" Link="AppId.fs" />
+    <Compile Include="$(UpstreamDir)ArrangementPropertiesOverride.fs" Link="ArrangementPropertiesOverride.fs" />
+    <Compile Include="$(UpstreamDir)Arrangement.fs" Link="Arrangement.fs" />
+    <Compile Include="$(UpstreamDir)DDS.fs" Link="DDS.fs" />
+    <Compile Include="$(UpstreamDir)StringValidator.fs" Link="StringValidator.fs" />
+    <Compile Include="$(UpstreamDir)SortableString.fs" Link="SortableString.fs" />
+    <Compile Include="$(UpstreamDir)DLCKey.fs" Link="DLCKey.fs" />
+    <Compile Include="$(UpstreamDir)DLCProject.fs" Link="DLCProject.fs" />
+    <Compile Include="$(UpstreamDir)Partitioner.fs" Link="Partitioner.fs" />
+    <Compile Include="$(UpstreamDir)XBlock.fs" Link="XBlock.fs" />
+    <Compile Include="$(UpstreamDir)PhraseLevelComparer.fs" Link="PhraseLevelComparer.fs" />
+    <Compile Include="$(UpstreamDir)AggregateGraph/Tags.fs" Link="AggregateGraph/Tags.fs" />
+    <Compile Include="$(UpstreamDir)AggregateGraph/GraphItem.fs" Link="AggregateGraph/GraphItem.fs" />
+    <Compile Include="$(UpstreamDir)AggregateGraph/AggregateGraph.fs" Link="AggregateGraph/AggregateGraph.fs" />
+    <Compile Include="$(UpstreamDir)Manifest/Techniques.fs" Link="Manifest/Techniques.fs" />
+    <Compile Include="$(UpstreamDir)Manifest/AttributesCreation.fs" Link="Manifest/AttributesCreation.fs" />
+    <Compile Include="$(UpstreamDir)SoundBank/SoundBankUtils.fs" Link="SoundBank/SoundBankUtils.fs" />
+    <Compile Include="$(UpstreamDir)SoundBank/SoundBank.fs" Link="SoundBank/SoundBank.fs" />
+    <Compile Include="$(UpstreamDir)PsarcImport/PsarcImportTypes.fs" Link="PsarcImport/PsarcImportTypes.fs" />
+    <Compile Include="$(UpstreamDir)PsarcImport/PsarcImportUtils.fs" Link="PsarcImport/PsarcImportUtils.fs" />
+    <Compile Include="$(UpstreamDir)PsarcImport/PsarcImporter.fs" Link="PsarcImport/PsarcImporter.fs" />
+    <Compile Include="$(UpstreamDir)ToolkitImporter.fs" Link="ToolkitImporter.fs" />
+    <Compile Include="$(UpstreamDir)ShowLightGenerator.fs" Link="ShowLightGenerator.fs" />
+    <Compile Include="$(UpstreamDir)PlatformConverter.fs" Link="PlatformConverter.fs" />
+    <Compile Include="$(UpstreamDir)PackageBuilder.fs" Link="PackageBuilder.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(UpstreamDir)res/rsenumerable_root.flat"
+                      Link="res/rsenumerable_root.flat"
+                      LogicalName="Rocksmith2014.DLCProject.res.rsenumerable_root.flat" />
+    <EmbeddedResource Include="$(UpstreamDir)res/rsenumerable_song.flat"
+                      Link="res/rsenumerable_song.flat"
+                      LogicalName="Rocksmith2014.DLCProject.res.rsenumerable_song.flat" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.SystemTextJson" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.Conversion/Rocksmith2014.Conversion.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.DD/Rocksmith2014.DD.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.PSARC/Rocksmith2014.PSARC.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.SNG/Rocksmith2014.SNG.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.XML.Processing/Rocksmith2014.XML.Processing.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.XML/Rocksmith2014.XML.csproj" />
+  </ItemGroup>
+</Project>

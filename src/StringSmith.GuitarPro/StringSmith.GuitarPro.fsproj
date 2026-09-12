@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The Guitar Pro producer: AlphaTab -> StringSmith.Core.TabScore.
+    This is the ONLY project allowed to reference AlphaTab. AlphaTab is consumed as an
+    unmodified NuGet package (MPL-2.0 file-level copyleft stays contained in the package).
+    Used purely as a headless parser; nothing here renders.
+  -->
+  <PropertyGroup>
+    <RootNamespace>StringSmith.GuitarPro</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="NoOpMidiHandler.fs" />
+    <Compile Include="Mapping.fs" />
+    <Compile Include="AlphaTabSource.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="AlphaTab" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../StringSmith.Core/StringSmith.Core.fsproj" />
+  </ItemGroup>
+</Project>

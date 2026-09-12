@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The ONLY place where musical time (ticks) becomes audio time (milliseconds).
+    Pure functions, no I/O, no dependencies beyond Core. Everything here is
+    unit-testable with hand-built TabScores.
+  -->
+  <PropertyGroup>
+    <RootNamespace>StringSmith.Sync</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TempoMap.fs" />
+    <Compile Include="SyncMap.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../StringSmith.Core/StringSmith.Core.fsproj" />
+  </ItemGroup>
+</Project>

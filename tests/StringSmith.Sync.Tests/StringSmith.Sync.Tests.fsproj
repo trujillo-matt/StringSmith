@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Scores.fs" />
+    <Compile Include="TempoMapTests.fs" />
+    <Compile Include="SyncMapTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="Expecto.FsCheck" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="YoloDev.Expecto.TestSdk" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/StringSmith.Core/StringSmith.Core.fsproj" />
+    <ProjectReference Include="../../src/StringSmith.Sync/StringSmith.Sync.fsproj" />
+  </ItemGroup>
+</Project>

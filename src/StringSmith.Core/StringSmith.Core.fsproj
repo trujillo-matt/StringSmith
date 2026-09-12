@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The neutral tab domain model. This project has NO dependencies: not AlphaTab,
+    not Avalonia, not Rocksmith2014.NET. It is the seam behind which a future audio
+    transcription sidecar would sit, and it is what makes Conversion testable with
+    hand-built fixtures instead of binary Guitar Pro files.
+  -->
+  <PropertyGroup>
+    <RootNamespace>StringSmith.Core</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Units.fs" />
+    <Compile Include="TabModel.fs" />
+    <Compile Include="TabSource.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

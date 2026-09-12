@@ -1,0 +1,22 @@
+<Project>
+  <!--
+    Applies to every project under this repository root EXCEPT the submodule at
+    external/Rocksmith2014.NET, which carries its own Directory.Build.props and does
+    not chain to this one. Anything that must reach the submodule's projects has to
+    be handled differently; see docs/PLAN-milestone-1.md §3 and the vendor/ projects.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarnOn>1182;3390;$(WarnOn)</WarnOn>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <RollForward>LatestMajor</RollForward>
+    <Authors>StringSmith contributors</Authors>
+    <Product>StringSmith</Product>
+    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+    <RocksmithNetRoot>$(RepoRoot)external/Rocksmith2014.NET/</RocksmithNetRoot>
+  </PropertyGroup>
+</Project>

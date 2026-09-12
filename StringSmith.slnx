@@ -1,0 +1,43 @@
+<Solution>
+  <!--
+    Folder layout:
+      /External/ : iminashi/Rocksmith2014.NET, referenced unmodified from the pinned submodule.
+      /Vendor/   : our own project files that compile submodule sources under our build props
+                   (see CLAUDE.md, "Build layout: the vendor shim").
+      /src/      : StringSmith proper.
+      /tests/    : headless tests. No Avalonia reference anywhere under here.
+  -->
+  <Folder Name="/External/">
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.FSharpExtensions/Rocksmith2014.FSharpExtensions.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.XML/Rocksmith2014.XML.csproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.XML.Extension/Rocksmith2014.XML.Extension.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.XML.Processing/Rocksmith2014.XML.Processing.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.Common/Rocksmith2014.Common.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.SNG/Rocksmith2014.SNG.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.PSARC/Rocksmith2014.PSARC.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.DD.Model/Rocksmith2014.DD.Model.csproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.DD/Rocksmith2014.DD.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.Conversion/Rocksmith2014.Conversion.fsproj" />
+    <Project Path="external/Rocksmith2014.NET/src/Rocksmith2014.Audio/Rocksmith2014.Audio.fsproj" />
+  </Folder>
+  <Folder Name="/Vendor/">
+    <Project Path="src/Vendor/Rocksmith2014.DLCProject/Rocksmith2014.DLCProject.fsproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/StringSmith.App/StringSmith.App.fsproj" />
+    <Project Path="src/StringSmith.Audio/StringSmith.Audio.fsproj" />
+    <Project Path="src/StringSmith.Conversion/StringSmith.Conversion.fsproj" />
+    <Project Path="src/StringSmith.Core/StringSmith.Core.fsproj" />
+    <Project Path="src/StringSmith.GuitarPro/StringSmith.GuitarPro.fsproj" />
+    <Project Path="src/StringSmith.Pipeline/StringSmith.Pipeline.fsproj" />
+    <Project Path="src/StringSmith.Sync/StringSmith.Sync.fsproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StringSmith.App.Tests/StringSmith.App.Tests.fsproj" />
+    <Project Path="tests/StringSmith.Audio.Tests/StringSmith.Audio.Tests.fsproj" />
+    <Project Path="tests/StringSmith.Conversion.Tests/StringSmith.Conversion.Tests.fsproj" />
+    <Project Path="tests/StringSmith.GuitarPro.Tests/StringSmith.GuitarPro.Tests.fsproj" />
+    <Project Path="tests/StringSmith.Pipeline.Tests/StringSmith.Pipeline.Tests.fsproj" />
+    <Project Path="tests/StringSmith.Sync.Tests/StringSmith.Sync.Tests.fsproj" />
+  </Folder>
+</Solution>

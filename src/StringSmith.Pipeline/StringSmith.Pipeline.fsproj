@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Orchestration: turns a BuildRequest into PSARC packages, reporting progress per stage
+    and leaving completed work on disk when a later stage fails. No UI dependency; the
+    Avalonia app calls Build.run on a background thread and marshals Progress back.
+
+    Brief stages 7, 8 and 9 (phrases + DD, assets, SNG + PSARC) are all inside one call
+    to Rocksmith2014.DLCProject.PackageBuilder.buildPackages. What this layer owns is
+    converting each mapped track to XML on disk, loudness and preview, WEM encoding (or
+    verifying pre-encoded WEMs), assembling the DLCProject record, and validating the
+    post-DD XML so the UI can show the library's coded issues.
+  -->
+  <PropertyGroup>
+    <RootNamespace>StringSmith.Pipeline</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="DefaultTones.fs" />
+    <Compile Include="Build.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../StringSmith.Core/StringSmith.Core.fsproj" />
+    <ProjectReference Include="../StringSmith.Sync/StringSmith.Sync.fsproj" />
+    <ProjectReference Include="../StringSmith.Conversion/StringSmith.Conversion.fsproj" />
+    <ProjectReference Include="../Vendor/Rocksmith2014.DLCProject/Rocksmith2014.DLCProject.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.Audio/Rocksmith2014.Audio.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.Common/Rocksmith2014.Common.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.DD/Rocksmith2014.DD.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.XML/Rocksmith2014.XML.csproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.XML.Processing/Rocksmith2014.XML.Processing.fsproj" />
+  </ItemGroup>
+</Project>

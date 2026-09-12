@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The Avalonia + FuncUI (Elmish) desktop app. The ONLY project that references Avalonia.
+    Everything it does goes through the pipeline layers; nothing here converts, syncs or
+    packs. Nullness checking is off in this project only: Avalonia's annotations would
+    turn view code into a sea of null-matches for no safety gain.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>StringSmith.App</RootNamespace>
+    <AssemblyName>StringSmith</AssemblyName>
+    <Nullable>disable</Nullable>
+    <RuntimeIdentifiers>osx-x64;osx-arm64;linux-x64</RuntimeIdentifiers>
+    <ApplicationIcon></ApplicationIcon>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Model.fs" />
+    <Compile Include="IssueText.fs" />
+    <Compile Include="Derive.fs" />
+    <Compile Include="Dialogs.fs" />
+    <Compile Include="Update.fs" />
+    <Compile Include="Views/Widgets.fs" />
+    <Compile Include="Views/Sections.fs" />
+    <Compile Include="Views/Main.fs" />
+    <Compile Include="MainWindow.fs" />
+    <Compile Include="App.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.FuncUI" />
+    <PackageReference Include="Avalonia.FuncUI.Elmish" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Tmds.DBus.Protocol" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../StringSmith.Core/StringSmith.Core.fsproj" />
+    <ProjectReference Include="../StringSmith.Sync/StringSmith.Sync.fsproj" />
+    <ProjectReference Include="../StringSmith.Conversion/StringSmith.Conversion.fsproj" />
+    <ProjectReference Include="../StringSmith.GuitarPro/StringSmith.GuitarPro.fsproj" />
+    <ProjectReference Include="../StringSmith.Audio/StringSmith.Audio.fsproj" />
+    <ProjectReference Include="../StringSmith.Pipeline/StringSmith.Pipeline.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.Common/Rocksmith2014.Common.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.DD/Rocksmith2014.DD.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.XML.Processing/Rocksmith2014.XML.Processing.fsproj" />
+  </ItemGroup>
+</Project>

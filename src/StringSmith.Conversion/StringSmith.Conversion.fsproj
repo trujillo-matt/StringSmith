@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Core.TabScore -> Rocksmith2014.XML.InstrumentalArrangement (one level, no phrases).
+    Phrases, sections and DD are NOT produced here: PackageBuilder runs the library's own
+    PhraseGenerator and DD generator on the XML this emits. What this layer owns is the
+    note/chord/anchor/handshape content, the Ebeats with measure markers that drive phrase
+    generation, and the metadata.
+
+    Depends on Core and Rocksmith2014.XML only. Time mapping is INJECTED as a function so
+    this project never references Sync and tests can use trivial linear time.
+  -->
+  <PropertyGroup>
+    <RootNamespace>StringSmith.Conversion</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Tuning.fs" />
+    <Compile Include="NoteBuilder.fs" />
+    <Compile Include="Anchors.fs" />
+    <Compile Include="Convert.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../StringSmith.Core/StringSmith.Core.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.XML/Rocksmith2014.XML.csproj" />
+  </ItemGroup>
+</Project>
