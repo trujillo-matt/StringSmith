@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    External-tool edge: FFmpeg/ffprobe detection and use, Wwise detection, WEM encoding.
+
+    FFmpeg's job is deliberately narrow. Rocksmith2014.Audio already decodes wav/ogg/flac
+    and measures BS.1770 loudness in managed code, and Wwise takes WAV input. FFmpeg is
+    here only to turn mp3/m4a (and anything else) into WAV, and to read embedded tags.
+
+    Every process call goes through an injected Env so the path resolution and output
+    parsing are unit-testable without the tools installed. This matters: the development
+    environment for Milestone 1 has neither FFmpeg nor Wwise, and macOS specifics cannot
+    be exercised here at all. What IS tested is everything up to the process boundary.
+  -->
+  <PropertyGroup>
+    <RootNamespace>StringSmith.Audio</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Env.fs" />
+    <Compile Include="Probe.fs" />
+    <Compile Include="Tags.fs" />
+    <Compile Include="Normalise.fs" />
+    <Compile Include="Wem.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.Audio/Rocksmith2014.Audio.fsproj" />
+    <ProjectReference Include="$(RocksmithNetRoot)src/Rocksmith2014.Common/Rocksmith2014.Common.fsproj" />
+  </ItemGroup>
+</Project>
