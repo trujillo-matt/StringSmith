@@ -121,9 +121,12 @@ SyncMap = { Anchors : (tabTick * audioMs) list }   // ordered, >= 1
 - Sync is applied as a pure function at XML emission time, to both `Ebeats` and note times.
   That keeps it headlessly testable and keeps the musical domain (ticks) separate from the
   audio domain (ms).
-- **Linear tempo ramps must be integrated, not stepped.** `MasterBar.TempoAutomations`
-  carries `IsLinear`, and the test file ramps across bars 85-94. Getting this wrong
-  silently misplaces everything after the first ramp.
+- **Linear tempo ramps: match AlphaTab, warn the user.** Correction to an earlier draft of
+  this plan: AlphaTab's own MIDI generator steps every tempo automation at its position and
+  ignores `IsLinear` on the tempo path. We do the same, so our timing agrees with AlphaTab's
+  `BeatTickLookup`, and we flag bars carrying ramps in the sync section as places where
+  anchors are strongly recommended. Pretending linear integration makes a tab "right"
+  against a real recording would be the dishonest option.
 
 ### Honesty requirements
 
@@ -347,7 +350,7 @@ local `.app` is fine), no project save/load, no batch processing, no tab or wave
 | ~~`<Platforms>x64</Platforms>` blocks `osx-arm64`~~ | resolved | tested in step 1: it does not. Both SNG and Audio build for arm64 |
 | Wwise untestable here; version regex stops at 2023 | high — no WEM means no package | widen the regex; preflight at launch; surface the exact failure |
 | Beat map wrong, so phrases + DD + grid all wrong | high | Ebeats is step 5's primary test target, with measure markers asserted |
-| Linear tempo ramps mishandled | high, and silent | integrate ramps; test against the Nightwish file's bars 85-94 |
+| Linear tempo ramps | medium | step them exactly as AlphaTab does; warn inline on the bars that carry them; anchors fix the rest |
 | Submodule pinned to a moving upstream | medium | pin the commit; record it in `CLAUDE.md`; the Magick swap is a local patch to track |
 | Community tab quality | medium | `ArrangementChecker` issues surfaced inline; never claim correctness |
 | macOS-only behaviour unverifiable here | medium | marked as inference throughout; you own steps 9-11 |
