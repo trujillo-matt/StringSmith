@@ -23,6 +23,8 @@
   <Folder Name="/Vendor/">
     <Project Path="src/Vendor/Rocksmith2014.DLCProject/Rocksmith2014.DLCProject.fsproj" />
   </Folder>
-  <Folder Name="/src/" />
+  <Folder Name="/src/">
+    <Project Path="src/StringSmith.Core/StringSmith.Core.fsproj" />
+  </Folder>
   <Folder Name="/tests/" />
 </Solution>
