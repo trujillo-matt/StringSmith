@@ -225,11 +225,31 @@ BS.1770 integrated loudness, reference **-16 LUFS**, `Math.Round(-16. - loudness
   Source: `packages/alphatab/src/model/BendPoint.ts`.
 - `MasterBar.TempoAutomations` carry `RatioPosition` (fraction within the bar) and
   `IsLinear`. **Linear tempo ramps occur in real files** (the Nightwish test file ramps
-  across bars 85-94), so the beat-map builder must integrate them, not assume step changes.
+  across bars 85-94). **AlphaTab's own MIDI generator does NOT integrate them**: it emits
+  one stepped tempo change per automation at its `RatioPosition` and never reads `IsLinear`
+  on the tempo path (`MidiFileGenerator._generateMasterBar`). We match that stepped
+  behaviour so our tick-to-ms agrees with AlphaTab's `BeatTickLookup`, and we surface the
+  presence of ramps as a sync warning. Neither stepping nor integrating is "correct"
+  against a real recording; sync anchors are what fix drift.
+- `MidiUtils.QuarterTime = 960` is the tick resolution, confirmed from source.
+- **Repeat unrolling** comes from AlphaTab, not from us: `MidiPlaybackController` is not
+  public in the .NET assembly, but `MidiFileGenerator` is, and after `Generate()` its
+  `TickLookup.MasterBars` lists one `MasterBarTickLookup` per playback occurrence with
+  absolute `Start`/`End` and per-occurrence `TempoChanges`. `Beat.PlaybackStart` is
+  bar-relative, so an unrolled beat tick is `occurrence.Start + beat.PlaybackStart`. A
+  no-op `IMidiFileHandler` object expression is the only scaffolding needed.
 - `Note.TrillFret` is a sentinel (observed `-60`, `-56`, `-41`) when `IsTrill` is false.
   Always gate on `IsTrill`.
 - `Note.LeftHandFinger` / `RightHandFinger` are `Fingers.Unknown` on real community
   files, matching the Rocksmith `-1` fingering gap. **Do not fabricate fingerings.**
+- **AlphaTab is not thread-safe.** `Score.ResetIds()` is static and importers share state;
+  concurrent loads fail non-deterministically with "Collection was modified". The producer
+  serialises every parse/generate through one lock. Never call AlphaTab from two threads.
+- **AlphaTab does not reject garbage.** Zero, sequential and random byte inputs all load as
+  a default empty score (1 track, 1 bar, 0 notes, 120 bpm, 6 strings); only text throws
+  `UnsupportedFormatError`. The producer therefore reports `NoPlayableTracks` whenever no
+  track has any notes. Garbage and a genuinely empty tab are indistinguishable and are
+  reported the same way on purpose.
 - `Track.PlaybackInfo.Program` (General MIDI) is a useful signal for suggesting an
   arrangement role, and for catching a vocal line charted on a guitar staff (the test
   file's "Anette voice" track is MIDI program 73, flute).

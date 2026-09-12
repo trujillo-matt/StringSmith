@@ -24,7 +24,14 @@
     <Project Path="src/Vendor/Rocksmith2014.DLCProject/Rocksmith2014.DLCProject.fsproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/StringSmith.Conversion/StringSmith.Conversion.fsproj" />
     <Project Path="src/StringSmith.Core/StringSmith.Core.fsproj" />
+    <Project Path="src/StringSmith.GuitarPro/StringSmith.GuitarPro.fsproj" />
+    <Project Path="src/StringSmith.Sync/StringSmith.Sync.fsproj" />
   </Folder>
-  <Folder Name="/tests/" />
+  <Folder Name="/tests/">
+    <Project Path="tests/StringSmith.Conversion.Tests/StringSmith.Conversion.Tests.fsproj" />
+    <Project Path="tests/StringSmith.GuitarPro.Tests/StringSmith.GuitarPro.Tests.fsproj" />
+    <Project Path="tests/StringSmith.Sync.Tests/StringSmith.Sync.Tests.fsproj" />
+  </Folder>
 </Solution>

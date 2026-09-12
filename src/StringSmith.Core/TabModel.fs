@@ -136,6 +136,9 @@ type TabBeat =
         DurationTicks: int64<tick>
         /// Empty for a rest.
         Notes: TabNote list
+        /// The chord name from a chord diagram, when the source had one ("Am7").
+        /// Rocksmith shows these; nothing downstream invents them.
+        ChordName: string option
         Dynamic: Dynamic
         IsTremoloPicked: bool
         IsTap: bool
@@ -189,6 +192,10 @@ type TabScore =
         TempoMap: TempoEvent list
         Bars: BarInfo list
         Tracks: TabTrack list
+        /// Tick-to-audio anchors the SOURCE FILE itself carried (GP7/GP8 can embed sync
+        /// points against a backing track). Empty for most community files. These are a
+        /// hint for StringSmith.Sync to seed anchors from; they are never trusted blindly.
+        SourceSyncPoints: (int64<tick> * float<ms>) list
     }
 
     /// The first tempo, or 120 if the score has none.
