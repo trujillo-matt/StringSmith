@@ -44,12 +44,21 @@ let private request (dir: string) (audio: string) (platforms: Platform list) =
 let private has (manifest: string list) (part: string) (ext: string) =
     manifest |> List.filter (fun f -> f.Contains part && f.EndsWith ext) |> List.length
 
+/// A build takes ~1.5 s on this machine. Ten minutes is not a performance assertion, it is
+/// a liveness one: if the pipeline ever wedges, the suite must fail with a clear timeout
+/// rather than spin forever. It did spin forever once — see the wrong-key test below.
+let private buildTimeoutMs = 600_000
+
 /// One build, shared by the checks below. Sequenced because the checks read its output.
 let private built =
     lazy (
         let dir, audio = workDir true
         let progress = Collections.Generic.List<Progress>()
-        let result = Build.run progress.Add (request dir audio [ PC; Mac ]) |> Async.RunSynchronously
+        let result =
+            try
+                Async.RunSynchronously(Build.run progress.Add (request dir audio [ PC; Mac ]), timeout = buildTimeoutMs)
+            with :? TimeoutException ->
+                failtestf "Build.run did not finish within %d ms" buildTimeoutMs
         dir, progress, result)
 
 let private output () =
@@ -164,17 +173,49 @@ let roundTrip =
                 Expect.floatClose Accuracy.medium (float firstSng) (float firstXml / 1000.0) $"{suffix}: first note time"
         }
 
-        testAsync "the Mac SNG does NOT decrypt with the PC key" {
+        test "the two platforms' SNGs hold the same plaintext under different keys" {
+            // This replaces an earlier test that decrypted the Mac SNG with the PC key and
+            // asserted the result did not parse. That test was unsound and it hung: SNG's
+            // reader does `Array.init (reader.ReadInt32())` (BinaryHelpers.fs:28), so a
+            // garbage length field asks for up to 2^31 elements. On Linux the allocation
+            // threw quickly and the test passed; on a memory-constrained arm64 Mac the same
+            // bytes sent the process into an unbounded GC thrash that ran over 20 minutes
+            // at 100% CPU and never returned. Never hand a wrong key to a binary parser.
+            //
+            // The property that actually matters is provable without parsing anything:
+            // identical plaintext encrypted under two different keys must differ. The
+            // header and IV are written in the clear, so the divergence starts right after
+            // them, which also re-confirms the 16-byte zero IV documented in CLAUDE.md.
             let o = output ()
-            use psarc = PSARC.OpenFile(packageFor o "_m")
-            let entry = psarc.Manifest |> List.find (fun f -> f.EndsWith "_lead.sng")
-            use stream = psarc.GetEntryStream entry |> Async.AwaitTask |> Async.RunSynchronously
-            let parsedSensibly =
-                try
-                    let sng = SNG.fromStream stream PC |> Async.RunSynchronously
-                    sng.Levels.Length > 0 && sng.Levels.Length < 100 && sng.Phrases |> Array.exists (fun p -> p.Name = "END")
-                with _ -> false
-            Expect.isFalse parsedSensibly "wrong platform key must not yield a sensible SNG"
+            let sngBytes (suffix: string) =
+                use psarc = PSARC.OpenFile(packageFor o suffix)
+                let name = psarc.Manifest |> List.find (fun f -> f.EndsWith "_lead.sng")
+                use mem = new MemoryStream()
+                psarc.InflateFile(name, mem).Wait()
+                mem.ToArray()
+
+            let pc = sngBytes "_p"
+            let mac = sngBytes "_m"
+
+            Expect.equal mac.Length pc.Length "same plaintext, so same ciphertext length"
+            Expect.isGreaterThan pc.Length 1000 "a real SNG, not an empty entry"
+
+            // 8-byte header (uint32 magic 0x4A, uint32 header) then the 16-byte IV.
+            let headerAndIv = 24
+            Expect.equal pc.[0] 0x4Auy "SNG magic"
+            Expect.sequenceEqual (Array.sub mac 0 headerAndIv) (Array.sub pc 0 headerAndIv) "header and IV are plaintext and identical"
+            Expect.sequenceEqual (Array.sub pc 8 16) (Array.zeroCreate 16) "the IV is 16 zero bytes"
+
+            Expect.notEqual (Array.sub mac headerAndIv (mac.Length - headerAndIv)) (Array.sub pc headerAndIv (pc.Length - headerAndIv))
+                "ciphertext must differ: the per-platform key was applied"
+
+            // Not a one-byte fluke: a key change should scramble essentially everything.
+            let differing =
+                Seq.zip (Seq.skip headerAndIv pc) (Seq.skip headerAndIv mac)
+                |> Seq.filter (fun (a, b) -> a <> b)
+                |> Seq.length
+            let ratio = float differing / float (pc.Length - headerAndIv)
+            Expect.isGreaterThan ratio 0.9 $"expected almost every ciphertext byte to differ, got %.1f{ratio * 100.0}%%"
         }
     ]
 
@@ -184,7 +225,7 @@ let failure =
         test "missing WEMs with no encoder fails at EncodingAudio, after both arrangements were converted to disk" {
             let dir, audio = workDir false
             let progress = Collections.Generic.List<Progress>()
-            match Build.run progress.Add (request dir audio [ PC ]) |> Async.RunSynchronously with
+            match Async.RunSynchronously(Build.run progress.Add (request dir audio [ PC ]), timeout = buildTimeoutMs) with
             | Ok _ -> failtest "should have failed"
             | Error e ->
                 Expect.equal e.Stage EncodingAudio "stage named"

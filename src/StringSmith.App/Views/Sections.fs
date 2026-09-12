@@ -15,6 +15,7 @@ open StringSmith.Conversion
 open StringSmith.Audio
 open StringSmith.Pipeline
 open StringSmith.App
+open StringSmith.App.Controls
 open StringSmith.App.Model
 open StringSmith.App.Views.Widgets
 
@@ -207,8 +208,8 @@ let sync (m: Model) (dispatch: Msg -> unit) : IView =
                       text $"{barOf a.Tick} → {fmtTime (float a.AudioMs)}"
                       button "Remove" true (fun () -> dispatch (RemoveAnchor a.Tick)) ]
               hstack 8.0 [
-                  TextBox.create [ TextBox.width 90.0; TextBox.watermark "Bar"; TextBox.text m.Sync.NewAnchor.Bar; TextBox.onTextChanged (SetNewAnchorBar >> dispatch) ]
-                  TextBox.create [ TextBox.width 140.0; TextBox.watermark "Audio time (s)"; TextBox.text m.Sync.NewAnchor.AudioSeconds; TextBox.onTextChanged (SetNewAnchorSeconds >> dispatch) ]
+                  GuardedTextBox.create [ TextBox.width 90.0; TextBox.watermark "Bar"; GuardedTextBox.text m.Sync.NewAnchor.Bar; GuardedTextBox.onTextChanged (SetNewAnchorBar >> dispatch) ]
+                  GuardedTextBox.create [ TextBox.width 140.0; TextBox.watermark "Audio time (s)"; GuardedTextBox.text m.Sync.NewAnchor.AudioSeconds; GuardedTextBox.onTextChanged (SetNewAnchorSeconds >> dispatch) ]
                   button "Add anchor" true (fun () -> dispatch AddAnchor)
                   button "Seed from file's sync points" (not s.SourceSyncPoints.IsEmpty) (fun () -> dispatch SeedAnchorsFromSource)
                   button "Clear" (not m.Sync.Anchors.IsEmpty) (fun () -> dispatch ClearAnchors) ] ]

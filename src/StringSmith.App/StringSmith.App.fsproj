@@ -15,6 +15,7 @@
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Controls/GuardedTextBox.fs" />
     <Compile Include="Model.fs" />
     <Compile Include="IssueText.fs" />
     <Compile Include="Derive.fs" />
