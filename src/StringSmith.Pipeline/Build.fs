@@ -13,6 +13,74 @@ open StringSmith.Core
 open StringSmith.Sync
 open StringSmith.Conversion
 
+/// Stable identities for a package and its arrangements.
+///
+/// Rocksmith keys a profile's score data on an arrangement's PersistentID and its song
+/// list on the MasterID. Upstream treats changing either as a destructive act: it
+/// regenerates them only when `PhraseLevelComparer` finds the DD levels came out easier
+/// than what the profile already recorded, and then only after asking the user
+/// (`PackageBuilder.IdResetConfig`). DLC Builder can afford that because it keeps the IDs
+/// in the project file.
+///
+/// StringSmith has no project file, so it derives the IDs from the package identity
+/// instead. Rebuilding the same tab, by the same charter, for the same role produces the
+/// same IDs, so reinstalling replaces the song in the profile rather than adding another
+/// copy of it. Before this, every build minted fresh IDs and every install accumulated.
+module ArrangementIdentity =
+
+    /// A stable 16-byte digest. MD5 is used here as a hash, not as a security primitive:
+    /// what matters is that it is fixed across runs, machines and framework versions,
+    /// which `GetHashCode` explicitly is not.
+    let private digest (seed: string) =
+        Security.Cryptography.MD5.HashData(Text.Encoding.UTF8.GetBytes seed)
+
+    /// Versioned so the derivation can be changed later without silently colliding with
+    /// IDs already written into someone's profile.
+    let private seed (dlcKey: string) (role: ArrangementRole) (occurrence: int) =
+        let key = dlcKey.ToLowerInvariant()
+        let name = role.Name.ToLowerInvariant()
+        $"stringsmith/id/v1/%s{key}/%s{name}/%d{occurrence}"
+
+    /// Replaces `Guid.NewGuid()`. `occurrence` is 0 for the first arrangement in a role and
+    /// counts up from there, so two tracks mapped to the same role still get distinct IDs.
+    let persistentId dlcKey role occurrence =
+        Guid(digest (seed dlcKey role occurrence))
+
+    /// Replaces `RandomGenerator.next ()`, which returns a non-negative Int32. The sign bit
+    /// is cleared to match that, and 0 is avoided because the manifest writes -1 and 0 is
+    /// close enough to a sentinel to be worth stepping around.
+    let masterId dlcKey role occurrence =
+        let d = digest (seed dlcKey role occurrence + "/master")
+        match BitConverter.ToInt32(d, 0) &&& 0x7FFFFFFF with
+        | 0 -> 1
+        | v -> v
+
+    /// The DLC key, derived the way `DLCKey.create` derives it, with one difference: where
+    /// upstream falls back to `RandomGenerator` (a charter name with fewer than two
+    /// alphanumeric characters, or a key that comes out shorter than the minimum) this pads
+    /// from the digest. A random tail would change the whole package identity on every
+    /// rebuild, which is the thing this module exists to stop. For any metadata that gives
+    /// upstream enough characters to work with, the two agree exactly.
+    let dlcKey (charter: string) (artist: string) (title: string) =
+        let part (s: string) =
+            let v = StringValidator.dlcKey s
+            v.Substring(0, min 5 v.Length)
+
+        let prefix =
+            let name = StringValidator.dlcKey charter
+            if name.Length >= 2 then name.Substring(0, 2) else "ss"
+
+        let key = prefix + part artist + part title
+
+        if key.Length >= DLCKey.MinimumLength then
+            key
+        else
+            let letters =
+                digest $"stringsmith/key/v1/%s{charter}/%s{artist}/%s{title}"
+                |> Array.map (fun b -> char (int 'a' + int b % 26))
+                |> String
+            key + letters.Substring(0, DLCKey.MinimumLength - key.Length)
+
 module Build =
 
     let private flatten (e: exn) =
@@ -126,7 +194,7 @@ module Build =
 
                 // ---- package
                 stage Packaging 0.0 Packaging.Label
-                let dlcKey = DLCKey.create req.Meta.Charter req.Meta.Artist req.Meta.Title
+                let dlcKey = ArrangementIdentity.dlcKey req.Meta.Charter req.Meta.Artist req.Meta.Title
                 let project =
                     { DLCProject.Empty with
                         DLCKey = dlcKey
@@ -142,8 +210,17 @@ module Build =
                         AudioPreviewStartTime = Some(TimeSpan.FromMilliseconds(float req.PreviewStartMs))
                         Tones = req.Tones
                         Arrangements =
+                            let seen = Dictionary<ArrangementRole, int>()
                             List.zip req.Arrangements (List.ofSeq completed)
                             |> List.map (fun (a, rep) ->
+                                // Position within this role, so a second track mapped to the
+                                // same role gets its own identity instead of colliding.
+                                let occurrence =
+                                    match seen.TryGetValue a.Role with
+                                    | true, n -> n
+                                    | _ -> 0
+                                seen[a.Role] <- occurrence + 1
+
                                 Instrumental
                                     { Instrumental.Empty with
                                         XmlPath = rep.XmlPath
@@ -152,8 +229,8 @@ module Build =
                                         Tuning = rep.Tuning
                                         TuningPitch = req.Meta.TuningPitchHz
                                         BaseTone = a.ToneKey
-                                        MasterId = RandomGenerator.next ()
-                                        PersistentId = Guid.NewGuid() }) }
+                                        MasterId = ArrangementIdentity.masterId dlcKey a.Role occurrence
+                                        PersistentId = ArrangementIdentity.persistentId dlcKey a.Role occurrence }) }
 
                 let config : BuildConfig =
                     { Platforms = req.Platforms

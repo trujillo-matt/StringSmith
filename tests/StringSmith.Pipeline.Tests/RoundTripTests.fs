@@ -5,6 +5,7 @@ open System.IO
 open Expecto
 open Rocksmith2014.Common
 open Rocksmith2014.DD
+open Rocksmith2014.DLCProject
 open Rocksmith2014.PSARC
 open Rocksmith2014.SNG
 open Rocksmith2014.XML
@@ -264,6 +265,103 @@ let roundTrip =
                     | Some(_, out) ->
                         failtestf "%s failed the independent structural check:\n%s"
                             (Path.GetFileName package) out
+        }
+    ]
+
+[<Tests>]
+let identity =
+    testSequenced <| testList "package identity is stable across rebuilds" [
+        test "a second build of the same song produces the same key and the same arrangement IDs" {
+            // Rocksmith keys profile score data on PersistentID. Before this was made
+            // deterministic every build minted fresh IDs, so every reinstall was a new song
+            // to the profile and the old one stayed behind.
+            let first = output ()
+
+            let dir, audio = workDir true
+            let second =
+                match Async.RunSynchronously(Build.run ignore (request dir audio [ PC ]), timeout = buildTimeoutMs) with
+                | Ok o -> o
+                | Error e -> failtestf "second build failed at %A: %s" e.Stage e.Message
+
+            Expect.equal second.DlcKey first.DlcKey "the DLC key is derived, not random"
+
+            let identities (o: BuildOutput) =
+                use psarc = PSARC.OpenFile(packageFor o "_p")
+                let name = psarc.Manifest |> List.find (fun f -> f.EndsWith ".hsan")
+                use stream = psarc.GetEntryStream name |> Async.AwaitTask |> Async.RunSynchronously
+                use doc = Text.Json.JsonDocument.Parse(stream)
+                [ for entry in doc.RootElement.GetProperty("Entries").EnumerateObject() ->
+                    let attrs = entry.Value.GetProperty("Attributes")
+                    attrs.GetProperty("ArrangementName").GetString(),
+                    entry.Name,
+                    attrs.GetProperty("MasterID_RDV").GetInt32() ]
+                |> List.sort
+
+            let a = identities first
+            let b = identities second
+            Expect.equal a.Length 2 "two arrangements"
+            Expect.equal b a "arrangement name, PersistentID and MasterID all survive a rebuild"
+
+            let persistentIds = a |> List.map (fun (_, pid, _) -> pid)
+            Expect.equal (List.distinct persistentIds).Length 2 "the two arrangements do not share an ID"
+            let masterIds = a |> List.map (fun (_, _, mid) -> mid)
+            Expect.isTrue (masterIds |> List.forall (fun m -> m > 0)) "MasterIDs are positive, as RandomGenerator.next would give"
+        }
+
+        test "the derived IDs match what the package actually carries" {
+            let o = output ()
+            for role in [ Lead; Bass ] do
+                let expectedPid = ArrangementIdentity.persistentId o.DlcKey role 0
+                let expectedMid = ArrangementIdentity.masterId o.DlcKey role 0
+                use psarc = PSARC.OpenFile(packageFor o "_p")
+                let name = psarc.Manifest |> List.find (fun f -> f.EndsWith ".hsan")
+                use stream = psarc.GetEntryStream name |> Async.AwaitTask |> Async.RunSynchronously
+                use doc = Text.Json.JsonDocument.Parse(stream)
+                let entry =
+                    doc.RootElement.GetProperty("Entries").EnumerateObject()
+                    |> Seq.find (fun e -> e.Value.GetProperty("Attributes").GetProperty("ArrangementName").GetString() = role.Name)
+                Expect.equal (Guid(entry.Name)) expectedPid $"{role.Name}: PersistentID is the derived one"
+                Expect.equal (entry.Value.GetProperty("Attributes").GetProperty("MasterID_RDV").GetInt32()) expectedMid $"{role.Name}: MasterID is the derived one"
+        }
+
+        test "an occurrence counter keeps two tracks in one role apart" {
+            let a = ArrangementIdentity.persistentId "TestKey" Rhythm 0
+            let b = ArrangementIdentity.persistentId "TestKey" Rhythm 1
+            Expect.notEqual a b "the second Rhythm track gets its own PersistentID"
+            Expect.notEqual (ArrangementIdentity.masterId "TestKey" Rhythm 0)
+                            (ArrangementIdentity.masterId "TestKey" Rhythm 1) "and its own MasterID"
+            Expect.notEqual (ArrangementIdentity.persistentId "TestKey" Lead 0)
+                            (ArrangementIdentity.persistentId "TestKey" Rhythm 0) "roles differ"
+            Expect.notEqual (ArrangementIdentity.persistentId "OtherKey" Lead 0)
+                            (ArrangementIdentity.persistentId "TestKey" Lead 0) "songs differ"
+        }
+
+        test "the derived DLC key agrees with the library's for ordinary metadata" {
+            // The derivation only diverges from DLCKey.create where upstream would reach for
+            // RandomGenerator: a charter name with fewer than two alphanumeric characters, or
+            // a key shorter than the minimum. Anything else must come out identical, or
+            // installing over an older StringSmith package would silently miss.
+            for charter, artist, title in
+                [ "StringSmithTest", "Nightwish", "The Crow, the Owl and the Dove"
+                  "matt", "Metallica", "Master of Puppets"
+                  "AB", "AC/DC", "T.N.T."
+                  "xy", "Rush", "2112" ] do
+                Expect.equal
+                    (ArrangementIdentity.dlcKey charter artist title)
+                    (DLCKey.create charter artist title)
+                    $"{charter}/{artist}/{title}"
+
+            // Where upstream reaches for RandomGenerator this pads from the digest, so the
+            // two deliberately differ. What is asserted is that the result is long enough
+            // and, unlike upstream's, the same every time. "Charter"/"a"/"b" yields "Chab",
+            // one short of the minimum, which is exactly this case.
+            for charter, artist, title in [ "!", "", ""; "Charter", "a", "b"; "", "Q", "Z" ] do
+                let key () = ArrangementIdentity.dlcKey charter artist title
+                Expect.equal (key ()) (key ()) $"{charter}/{artist}/{title}: stable"
+                Expect.isGreaterThanOrEqual (key ()).Length DLCKey.MinimumLength
+                    $"{charter}/{artist}/{title}: long enough"
+                Expect.isTrue (key () |> Seq.forall Char.IsLetterOrDigit)
+                    $"{charter}/{artist}/{title}: alphanumeric, as the game requires"
         }
     ]
 

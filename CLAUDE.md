@@ -294,7 +294,7 @@ code 0 means green; `dotnet test` is not wired up).
 | Conversion | 28 | ebeats with measure markers, notes/chords/templates/handshapes/anchors, ties, slides, bends, tuning, XML round trip |
 | Audio | 18 | FFmpeg/Wwise detection incl. Wwise 2024+, ffprobe tag parsing, WAV normalise args |
 | App | 33 | every section renders in every model state headlessly; prefill precedence, role suggestion, NotSynced-on-defaults, build gate |
-| Pipeline | 9 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; per-platform keys proved by ciphertext divergence; failure leaves converted XML on disk |
+| Pipeline | 14 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; per-platform keys proved by ciphertext divergence; failure leaves converted XML on disk; an independent openssl-based reader agrees the container is well formed; package identity survives a rebuild |
 
 The round trip's packed XML had 14 DD levels and 8-10 phrases from our single-level input,
 so PhraseGenerator and the DD generator accept what Conversion emits. WEM encoding is the
@@ -450,16 +450,37 @@ observed and no theory about it was confirmed or falsified. What was falsified i
 general claim that StringSmith emits malformed PSARCs: for the inputs available here, it
 does not.
 
-**A real defect found on the way, not established as the cause.** `Build.run` assigns
-`MasterId = RandomGenerator.next ()` and `PersistentId = Guid.NewGuid()` on **every build**.
-Rocksmith keys profile score data on `PersistentID`, which is why upstream regenerates IDs
-only when `PhraseLevelComparer` finds the DD levels got easier than what the profile already
-recorded, and only after asking the user (`IdResetConfig`). Rebuilding the same song in
-StringSmith therefore installs a brand new song identity every time, and repeated installs
-accumulate in the profile. That is consistent with a profile that loads slowly, but nothing
-here demonstrates it causes a freeze. The fix is to derive both IDs deterministically from
-the DLC key and the arrangement role so a rebuild keeps its identity; that is a change to
-`src/StringSmith.Pipeline/Build.fs` and has not been made.
+**A real defect found on the way, now fixed, and still not established as the cause.**
+`Build.run` assigned `MasterId = RandomGenerator.next ()` and `PersistentId = Guid.NewGuid()`
+on **every build**. Rocksmith keys profile score data on `PersistentID`, which is why upstream
+regenerates IDs only when `PhraseLevelComparer` finds the DD levels came out easier than what
+the profile already recorded, and only after asking the user (`IdResetConfig`) — DLC Builder
+can afford to be that careful because it keeps the IDs in the project file. StringSmith has no
+project file, so it minted fresh ones every time and every reinstall was a brand new song to
+the profile, with the old one left behind. That is consistent with a profile that loads
+slowly. It is not demonstrated to cause a freeze, and fixing it is not a claim that it does.
+
+`ArrangementIdentity` in `src/StringSmith.Pipeline/Build.fs` now derives all three identifiers
+from an MD5 digest of a versioned seed:
+
+- `persistentId key role occurrence` replaces `Guid.NewGuid()`.
+- `masterId key role occurrence` replaces `RandomGenerator.next ()`, sign bit cleared so it
+  stays a non-negative `Int32` as before, and 0 stepped around.
+- `dlcKey charter artist title` replaces `DLCKey.create`. It derives the key by upstream's
+  rule and differs only where upstream reaches for `RandomGenerator`: a charter name with
+  fewer than two alphanumeric characters, or a key that comes out under `MinimumLength`. A
+  random tail there would change the whole package identity on every rebuild, which is the
+  thing this exists to stop. A test asserts the two agree exactly for ordinary metadata.
+
+`occurrence` counts position within a role, so two tracks mapped to Rhythm get distinct IDs
+instead of colliding. MD5 is used as a hash, not as a security primitive: what matters is
+that it is fixed across runs, machines and framework versions, which `GetHashCode` is not.
+The seed carries a `v1` so the derivation can change later without colliding with IDs already
+written into someone's profile.
+
+Four tests in `tests/StringSmith.Pipeline.Tests` cover it, including a second full build
+compared against the first through the packed `.hsan`. Mutation tested: putting
+`Guid.NewGuid()` back fails exactly the two rebuild-stability tests and nothing else.
 
 **Getting evidence from the failing package.** On the Mac, against the actual `.psarc`:
 
