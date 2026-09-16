@@ -34,6 +34,16 @@ let hstack (spacing: float) (children: IView list) : IView =
 
 /// A titled card. Disabled sections stay visible so the user sees the whole shape of the
 /// task, dimmed, with the reason they are not yet available.
+///
+/// The disabled-reason line is ALWAYS rendered and merely hidden when the section is
+/// enabled. Writing it as `if not enabled then dim reason` seems harmless and is not:
+/// FuncUI matches children by index, so the line disappearing when a section becomes
+/// enabled shifted every field below it up one slot. Each control was then patched with
+/// its neighbour's view while keeping its own change callback, so typing into one field
+/// edited the field above it, and a field's displayed text stopped matching the model —
+/// which is why a visible "2025" in Year still left "Year must be a number" blocking the
+/// build. Keep this list's length constant. The same rule applies to every children list
+/// in this app; use `container` below for anything variable.
 let section (title: string) (enabled: bool) (disabledReason: string) (content: IView list) : IView =
     Border.create [
         Border.margin (Thickness(0.0, 0.0, 0.0, 12.0))
@@ -45,10 +55,25 @@ let section (title: string) (enabled: bool) (disabledReason: string) (content: I
         Border.child (
             vstack 8.0 [
                 heading title
-                if not enabled then dim disabledReason
+                TextBlock.create [
+                    TextBlock.text disabledReason
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.foreground "#9a9a9a"
+                    TextBlock.fontSize 12.0
+                    TextBlock.isVisible (not enabled)
+                ]
                 yield! content
             ])
     ] :> IView
+
+/// Wraps a variable-length run of views in one child, so that the run's length changing
+/// between renders cannot shift the index of anything beside it. Any `yield!` of a list
+/// whose length depends on model state belongs inside one of these.
+let container (children: IView list) : IView =
+    Avalonia.FuncUI.DSL.ViewBuilder.Create<VariableChildren>
+        [ StackPanel.orientation Orientation.Vertical
+          StackPanel.spacing 4.0
+          StackPanel.children children ] :> IView
 
 /// Label on the left, control and its notes on the right.
 ///
@@ -69,7 +94,7 @@ let labelled (label: string) (control: IView) (notes: IView list) : IView =
                 StackPanel.spacing 2.0
                 StackPanel.children [
                     control
-                    StackPanel.create [ StackPanel.spacing 2.0; StackPanel.children notes ]
+                    container notes
                 ]
             ]
         ]
@@ -106,14 +131,6 @@ let chip (label: string) (background: string) : IView =
         Border.padding (Thickness(10.0, 3.0))
         Border.horizontalAlignment HorizontalAlignment.Left
         Border.child (TextBlock.create [ TextBlock.text label; TextBlock.fontSize 12.0; TextBlock.fontWeight FontWeight.SemiBold ])
-    ] :> IView
-
-let comboBox (items: string list) (selected: string) (onChange: string -> unit) (width: float) : IView =
-    ComboBox.create [
-        ComboBox.dataItems items
-        ComboBox.selectedItem selected
-        ComboBox.width width
-        ComboBox.onSelectedItemChanged (fun o -> match o with :? string as s -> onChange s | _ -> ())
     ] :> IView
 
 let fmtTime (ms: float) = StringSmith.App.Derive.fmtTime ms

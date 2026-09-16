@@ -293,7 +293,7 @@ code 0 means green; `dotnet test` is not wired up).
 | Sync | 24 | nominal time, anchor warp, drift report, FsCheck monotonicity |
 | Conversion | 28 | ebeats with measure markers, notes/chords/templates/handshapes/anchors, ties, slides, bends, tuning, XML round trip |
 | Audio | 18 | FFmpeg/Wwise detection incl. Wwise 2024+, ffprobe tag parsing, WAV normalise args |
-| App | 23 | every section renders in every model state headlessly; prefill precedence, role suggestion, NotSynced-on-defaults, build gate |
+| App | 33 | every section renders in every model state headlessly; prefill precedence, role suggestion, NotSynced-on-defaults, build gate |
 | Pipeline | 9 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; per-platform keys proved by ciphertext divergence; failure leaves converted XML on disk |
 
 The round trip's packed XML had 14 DD levels and 8-10 phrases from our single-level input,
@@ -337,6 +337,13 @@ Two real bugs came out of that run. Both are fixed.
    `Views/Widgets.fs` now gives every field row a constant child count so controls are not
    reassigned between slots at all. Regression-tested headlessly: the control instantiates
    without an Avalonia Application, so the suppression is asserted directly.
+2b. **A second macOS run (video, 2026-09-15) showed the Year fix was incomplete.** The
+   `GuardedTextBox` half was right but the other half was not: `Widgets.section` still held
+   a conditional child, and the guarded control pinned its callback with an always-equal
+   comparer, so recycled controls kept stale callbacks. Typing into a field edited the one
+   above, and Year displayed a value the model did not hold, so the build stayed blocked.
+   Fixed properly and generalised into the rules above. That run also confirmed Wwise is
+   now installed and detected.
 2. **The Pipeline suite hung for over 20 minutes** at 100% CPU with RSS climbing to 2.1 GB
    and every stack sample inside GC internals. **The cause was the test, not the pipeline.**
    Measured on Linux: `Build.run` takes 1.7 s end to end, Packaging 0.7 s, Validating 27 ms,
@@ -351,6 +358,49 @@ Two real bugs came out of that run. Both are fixed.
    (magic `0x4A`, header, and the 16-byte zero IV, which independently re-confirms the
    zero-IV finding above) and then 99% of bytes differ. Both build calls in that suite now
    carry a 10-minute liveness timeout so a wedge fails loudly instead of spinning.
+
+## The FuncUI index-matching rule (read before touching any view)
+
+This has now caused three shipped bugs. **FuncUI matches children by index.** If a children
+list changes length between renders, every sibling after the change shifts one slot, and
+FuncUI patches the control that was rendering slot N with the view for slot N+1. Two things
+then go wrong at once: the recycled control keeps its own change callback, so typing into
+one field edits its neighbour; and once the model and the displayed text disagree, FuncUI's
+value comparison on the `text` attribute sees no change and never corrects the display.
+
+That is the whole explanation for the reported symptoms: a visible `2025` in Year while the
+build stayed blocked on "Year must be a number", and typing into one field editing the one
+above. The trigger was a single innocuous line in `Widgets.section`:
+
+```fsharp
+if not enabled then dim disabledReason     // WRONG: a conditional child
+```
+
+When a section flipped from disabled to enabled, that line vanished and all eight metadata
+rows moved up one slot.
+
+**The rules, all enforced by tests:**
+
+1. **Never write a conditional child.** Render it always and toggle `isVisible`.
+2. **Any run whose length depends on model state goes inside `Widgets.container`** (a
+   `VariableChildren` panel). The run then occupies exactly one slot however long it gets.
+   Appending at the end of a list is harmless; inserting or removing in the middle is not.
+3. **Never use a raw `TextBox` or `ComboBox` for input.** Use `GuardedTextBox` /
+   `GuardedComboBox` from `Controls/`. Avalonia's property setters raise change
+   notifications, so a plain handler fires on every render that assigns a value, dispatching
+   edits nobody made. These guard that, and re-apply both the value and the callback every
+   render so a recycled control is always current. iminashi's `Fixed*` controls pin the
+   callback instead with an always-equal comparer, which is safe only while the view
+   structure never changes shape; ours does, so we re-apply.
+4. **Handlers that can fire from a view-set value must compare against current state**
+   before dispatching (the checkboxes do: `if not m.Output.PC then dispatch TogglePC`).
+
+`tests/StringSmith.App.Tests` enforces rules 1 and 2 with a shape test that walks the view
+tree and asserts every children count is identical across nine model states, stopping at
+`VariableChildren` nodes. It is not a vacuous test: reintroducing the `if not enabled` line
+makes `metadata` and `output` fail with exactly the one-slot shift (11 children to 10,
+`/3` becoming `/2`). Rule 3 is covered by direct tests on the guarded controls, which
+construct headlessly.
 
 Steps 1-7 are covered by `Directory.Build.props` nullness checking; the App has it disabled
 because Avalonia's annotations would turn view code into null-matches for no safety gain.

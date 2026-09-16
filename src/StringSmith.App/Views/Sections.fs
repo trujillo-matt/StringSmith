@@ -36,7 +36,7 @@ let dependencies (m: Model) (dispatch: Msg -> unit) : IView =
               row "ffprobe" "read the audio file's tags and length" d.FFprobe
               row "Wwise" "encode audio to WEM. Install Wwise 2019-2024 from Audiokinetic into /Applications/Audiokinetic" d.Wwise
               button "Check again" true (fun () -> dispatch RecheckDeps) ]
-    section "1. Dependencies" true "" body
+    section "1. Dependencies" true "" [ container body ]
 
 // ---------------------------------------------------------------- 2 source files
 
@@ -73,6 +73,8 @@ let sources (m: Model) (dispatch: Msg -> unit) : IView =
 // ---------------------------------------------------------------- 3 track mapping
 
 let private roleLabels = [ "Not included"; "Lead"; "Rhythm"; "Bass" ]
+/// Module level so the combo's ItemsSource is the same instance every render.
+let private toneKeys = DefaultTones.all |> List.map (fun t -> t.Key)
 let private roleOf = function "Lead" -> Some Lead | "Rhythm" -> Some Rhythm | "Bass" -> Some Bass | _ -> None
 let private labelOf = function Some Lead -> "Lead" | Some Rhythm -> "Rhythm" | Some Bass -> "Bass" | None -> "Not included"
 
@@ -80,7 +82,6 @@ let tracks (m: Model) (dispatch: Msg -> unit) : IView =
     match Derive.score m with
     | None -> section "3. Track mapping" false "Choose a Guitar Pro file first." []
     | Some s ->
-        let toneKeys = DefaultTones.all |> List.map (fun t -> t.Key)
         let header =
             Grid.create [
                 Grid.columnDefinitions "*,130,70,70,70,140,170"
@@ -102,32 +103,46 @@ let tracks (m: Model) (dispatch: Msg -> unit) : IView =
                         TextBlock.create [ Grid.column 2; TextBlock.text (if t.IsPercussion then "drums" else string t.StringCount); TextBlock.verticalAlignment VerticalAlignment.Center ]
                         TextBlock.create [ Grid.column 3; TextBlock.text (string t.MidiProgram); TextBlock.verticalAlignment VerticalAlignment.Center ]
                         TextBlock.create [ Grid.column 4; TextBlock.text (string t.NoteCount); TextBlock.verticalAlignment VerticalAlignment.Center ]
-                        if mappable then
-                            ComboBox.create [
-                                Grid.column 5
-                                ComboBox.dataItems roleLabels
-                                ComboBox.selectedItem (labelOf role)
-                                ComboBox.width 130.0
-                                ComboBox.onSelectedItemChanged (fun o -> match o with :? string as l -> dispatch (SetRole(t.Index, roleOf l)) | _ -> ())
-                            ]
-                        else
-                            TextBlock.create [ Grid.column 5; TextBlock.text "—"; TextBlock.foreground "#9a9a9a"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                        if role.IsSome then
-                            ComboBox.create [
-                                Grid.column 6
-                                ComboBox.dataItems toneKeys
-                                ComboBox.selectedItem tone
-                                ComboBox.width 160.0
-                                ComboBox.onSelectedItemChanged (fun o -> match o with :? string as k -> dispatch (SetTone(t.Index, k)) | _ -> ())
-                            ]
+                        // Both combo slots are always present; visibility toggles. These
+                        // handlers capture t.Index, so a recycled control carrying a stale
+                        // callback would assign a role to the wrong track.
+                        GuardedComboBox.create [
+                            Grid.column 5
+                            GuardedComboBox.dataItems roleLabels
+                            GuardedComboBox.selectedItem (labelOf role)
+                            ComboBox.width 130.0
+                            ComboBox.isVisible mappable
+                            GuardedComboBox.onSelectedItemChanged (fun o ->
+                                match o with
+                                | :? string as l when roleOf l <> role -> dispatch (SetRole(t.Index, roleOf l))
+                                | _ -> ())
+                        ]
+                        TextBlock.create [
+                            Grid.column 5
+                            TextBlock.text "—"
+                            TextBlock.foreground "#9a9a9a"
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                            TextBlock.isVisible (not mappable)
+                        ]
+                        GuardedComboBox.create [
+                            Grid.column 6
+                            GuardedComboBox.dataItems toneKeys
+                            GuardedComboBox.selectedItem tone
+                            ComboBox.width 160.0
+                            ComboBox.isVisible role.IsSome
+                            GuardedComboBox.onSelectedItemChanged (fun o ->
+                                match o with
+                                | :? string as k when k <> tone -> dispatch (SetTone(t.Index, k))
+                                | _ -> ())
+                        ]
                     ]
                 ]
-                yield! Derive.trackWarnings m t |> List.map warn
+                container (Derive.trackWarnings m t |> List.map warn)
             ]
         section "3. Track mapping" true "" [
             dim "Suggested roles come from each track's MIDI instrument and string count. Check them; nothing is applied silently."
             header
-            yield! s.Tracks |> List.map row
+            container (s.Tracks |> List.map row)
         ]
 
 // ---------------------------------------------------------------- 4 metadata
@@ -158,7 +173,7 @@ let metadata (m: Model) (dispatch: Msg -> unit) : IView =
         textField "Album" m.Meta.Album.Value m.Meta.Album.Source.Label (SetAlbum >> dispatch) []
         textField "Year" m.Meta.Year.Value m.Meta.Year.Source.Label (SetYear >> dispatch) yearNote
         textField "Tuning frequency (Hz)" m.Meta.TuningPitch "" (SetTuningPitch >> dispatch) pitchNote
-        labelled "Tuning" (vstack 2.0 (if tuningNotes.IsEmpty then [ dim "Taken from each mapped track; see Track mapping." ] else tuningNotes)) []
+        labelled "Tuning" (container (if tuningNotes.IsEmpty then [ dim "Taken from each mapped track; see Track mapping." ] else tuningNotes)) []
         filePicker "Album art" m.Meta.AlbumArt "No image chosen (PNG or JPEG; becomes 64/128/256 DDS)" (fun () -> dispatch PickAlbumArt) []
         textField "Charter name" m.Meta.Charter "" (SetCharter >> dispatch) [ dim "Used for the package author and the DLC key prefix." ]
     ]
@@ -215,9 +230,9 @@ let sync (m: Model) (dispatch: Msg -> unit) : IView =
                   button "Clear" (not m.Sync.Anchors.IsEmpty) (fun () -> dispatch ClearAnchors) ] ]
         section "5. Audio sync" true "" [
             statusChip
-            yield! readout
+            container readout
             CheckBox.create [ CheckBox.content "Use anchor points (advanced)"; CheckBox.isChecked m.Sync.Advanced; CheckBox.onChecked (fun _ -> if not m.Sync.Advanced then dispatch ToggleAdvancedSync); CheckBox.onUnchecked (fun _ -> if m.Sync.Advanced then dispatch ToggleAdvancedSync) ]
-            yield! (if m.Sync.Advanced then advanced else simple)
+            container (if m.Sync.Advanced then advanced else simple)
         ]
     | _ -> section "5. Audio sync" false "Choose both a Guitar Pro file and an audio file first." []
 
@@ -250,13 +265,13 @@ let private arrangementReport (r: ArrangementReport) : IView =
     let issues = r.Issues |> List.sortBy (fun i -> i.TimeCode |> Option.defaultValue -1)
     vstack 3.0 [
         text $"{r.Role.Name}: {r.Stats.Notes} notes, {r.Stats.Chords} chords, {r.Stats.ChordTemplates} chord shapes, {r.Stats.Anchors} anchors, {r.Stats.Ebeats} beats."
-        yield! r.Warnings |> List.map (warningText >> warn)
+        container (r.Warnings |> List.map (warningText >> warn))
         if issues.IsEmpty then good "The library's arrangement checker found no issues."
         else
             warn $"Arrangement checker: {issues.Length} issue(s) on the packed arrangement."
             Expander.create [
                 Expander.header $"Show {min issues.Length 40} of {issues.Length}"
-                Expander.content (vstack 1.0 [ for i in issues |> List.truncate 40 -> mono (IssueText.line i) ])
+                Expander.content (container [ for i in issues |> List.truncate 40 -> mono (IssueText.line i) ])
             ]
     ]
 
@@ -275,14 +290,15 @@ let build (m: Model) (dispatch: Msg -> unit) : IView =
               dim p.Message ]
         | BuildSucceeded o ->
             [ good $"Built {o.Packages.Length} package(s). DLC key {o.DlcKey}."
-              for p in o.Packages do
-                  hstack 8.0 [ mono (Path.GetFileName p); button "Reveal in Finder" true (fun () -> dispatch (Reveal p)) ]
+              // Contained: these rows carry Reveal buttons whose handlers capture a path,
+              // so a recycled button with a stale closure would open the wrong folder.
+              container [ for p in o.Packages -> hstack 8.0 [ mono (Path.GetFileName p); button "Reveal in Finder" true (fun () -> dispatch (Reveal p)) ] ]
               (match o.Drift.Status with
                | NotSynced -> warn "This package was built UNSYNCED. It will play, but the notes are not aligned to this recording."
                | st ->
                    let mism = (float o.Drift.MismatchMs / 1000.0).ToString("F2")
                    dim $"Sync: {st}. Tab/audio mismatch {mism} s.")
-              yield! o.Arrangements |> List.map arrangementReport
+              container (o.Arrangements |> List.map arrangementReport)
               hstack 8.0 [ dim $"Work files kept in {o.WorkDir}"; button "Reveal" true (fun () -> dispatch (Reveal o.WorkDir)) ]
               warn "Next step is yours: copy the package into Rocksmith's dlc folder and confirm it loads and plays with Dynamic Difficulty. Nothing here can verify in-game behaviour." ]
         | BuildFailed f ->
@@ -291,9 +307,9 @@ let build (m: Model) (dispatch: Msg -> unit) : IView =
                   dim $"{f.Completed.Length} arrangement(s) were converted before the failure; their XML is kept in the work folder, so a retry does not start from nothing."
               hstack 8.0 [ dim $"Work folder: {f.WorkDir}"; button "Reveal" true (fun () -> dispatch (Reveal f.WorkDir)) ] ]
     section "7. Build" true "" [
-        yield! body
+        container body
         Expander.create [
             Expander.header "Log"
-            Expander.content (ScrollViewer.create [ ScrollViewer.maxHeight 220.0; ScrollViewer.content (vstack 0.0 [ for l in m.Log |> List.truncate 200 -> mono l ]) ])
+            Expander.content (ScrollViewer.create [ ScrollViewer.maxHeight 220.0; ScrollViewer.content (container [ for l in m.Log |> List.truncate 200 -> mono l ]) ])
         ]
     ]
