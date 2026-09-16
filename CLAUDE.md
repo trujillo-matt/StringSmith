@@ -294,7 +294,7 @@ code 0 means green; `dotnet test` is not wired up).
 | Conversion | 28 | ebeats with measure markers, notes/chords/templates/handshapes/anchors, ties, slides, bends, tuning, XML round trip |
 | Audio | 18 | FFmpeg/Wwise detection incl. Wwise 2024+, ffprobe tag parsing, WAV normalise args |
 | App | 33 | every section renders in every model state headlessly; prefill precedence, role suggestion, NotSynced-on-defaults, build gate |
-| Pipeline | 14 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; per-platform keys proved by ciphertext divergence; failure leaves converted XML on disk; an independent openssl-based reader agrees the container is well formed; package identity survives a rebuild |
+| Pipeline | 20 | **the acceptance round trip**: `full-song.gp5` -> two arrangements -> `_p` and `_m` PSARCs -> TOC read back -> SNG decrypted per platform, hardest level equal note-for-note to the packed XML; per-platform keys proved by ciphertext divergence; failure leaves converted XML on disk; an independent openssl-based reader agrees the container is well formed; package identity survives a rebuild |
 
 The round trip's packed XML had 14 DD levels and 8-10 phrases from our single-level input,
 so PhraseGenerator and the DD generator accept what Conversion emits. WEM encoding is the
@@ -481,6 +481,75 @@ written into someone's profile.
 Four tests in `tests/StringSmith.Pipeline.Tests` cover it, including a second full build
 compared against the first through the packed `.hsan`. Mutation tested: putting
 `Guid.NewGuid()` back fails exactly the two rebuild-stability tests and nothing else.
+
+### A real corrupt package, and where the corruption actually comes from
+
+A package built on the Apple Silicon Mac, `maTheRuFunny_m.psarc` (5,239,046 bytes), came off
+disk with this header:
+
+```
+50534152 f168 f168 7a6c6962 f168e01c f168e01c f168e01c f168e01c 90099720
+"PSAR"   ver  ver  "zlib"   ToCLen   EntrySz  EntryCnt BlockAll Flags
+```
+
+`inspect-psarc.py` rejects it fatally: `ToCEntryCount is 4050182172`. The game's own reader
+sizing a list from that is consistent with a hang during DLC enumeration rather than a clean
+error, which is the reported symptom.
+
+**The split in that header is exact, and it is the whole finding.** `Header.Write` writes
+nine fields. The two written with `WriteBytes` ("PSAR", "zlib") are correct. Every one of the
+seven written with `WriteUInt16`/`WriteUInt32` is wrong. Four consecutive uint32 fields
+holding four different values all came out as the same `f168e01c`; both uint16 fields came
+out as `f168`, its first two bytes.
+
+That **rules out** a flush, a race, an interleaved parallel write, a reused buffer and a
+reopened handle. Every one of those corrupts a contiguous byte range. None of them spares
+`zlib` sitting between two corrupt fields, and none of them makes four different values come
+out identical. It is also not StringSmith's code: StringSmith has no PSARC writer. It calls
+`PackageBuilder.buildPackages`, and every byte of the container is written by
+`Rocksmith2014.PSARC` under `external/`.
+
+What the pattern fits is the writer emitting stale stack memory instead of the value, the
+same stale memory across consecutive calls. Every `WriteUInt*` in
+`Rocksmith2014.Common/BinaryWriters.fs` is:
+
+```fsharp
+let buffer = NativePtr.stackalloc<byte> length |> NativePtr.toVoidPtr
+BinaryPrimitives.WriteUInt32BigEndian(Span<byte>(buffer, length), value)
+stream.Write(ReadOnlySpan(buffer, length))
+```
+
+`WriteBytes` is `stream.Write(ReadOnlySpan(value))` and touches none of that. The corruption
+follows the construct exactly.
+
+**Why this would be new.** CLAUDE.md finding 5 already records that DLC Builder publishes
+`osx-x64` only, so upstream's own macOS builds run under Rosetta 2. StringSmith is plausibly
+the first thing to run this code natively on arm64.
+
+**Not established.** The mechanism inside that locus. A stack buffer must stay valid for the
+life of its method, so this is not simply wrong code; it needs codegen-level evidence from
+arm64 hardware, which is not available here. Do not patch around it on the read side.
+
+**The test that settles it.** `tests/StringSmith.Pipeline.Tests/BinaryPrimitiveTests.fs`
+writes known integers through `BigEndianBinaryWriter` and compares against literal bytes,
+never against a reader (`BinaryReaders.fs` uses the identical construct, so a matching fault
+on both sides cancels out). It **loops 200,000 times**: tiered compilation rejits a method in
+optimized code after roughly 30 calls, so a fault in the optimized tier leaves early calls
+correct. A package writes thousands of integers before it writes its header, which is why a
+single-shot test would pass on a machine that cannot build a valid package. Alongside it,
+`"every built package has a valid 32-byte header, read as raw bytes"` checks a real build's
+header with plain byte arithmetic, no `IBinaryReader`, no `BinaryPrimitives`, no `Span`.
+
+Both pass on Linux x86_64. If `BinaryPrimitiveTests` fails on arm64, the write primitives are
+the locus, **every** package built on that machine is garbage rather than marginally broken,
+and that machine's test results cannot be trusted either. Run it with
+`DOTNET_TieredCompilation=0` as well: if that makes it pass, the fault is in the optimized
+JIT tier.
+
+**A separate bug, not this one.** The `IOException: being used by another process` seen in
+the same suite is `Utils.openFileStreamForPSARC` opening with `FileShare.None` while an
+earlier `PSARC` object still holds the handle. It cannot produce a corrupt header and should
+not be folded into this.
 
 **Getting evidence from the failing package.** On the Mac, against the actual `.psarc`:
 

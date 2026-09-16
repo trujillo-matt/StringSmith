@@ -219,6 +219,54 @@ let roundTrip =
             Expect.isGreaterThan ratio 0.9 $"expected almost every ciphertext byte to differ, got %.1f{ratio * 100.0}%%"
         }
 
+        test "every built package has a valid 32-byte header, read as raw bytes" {
+            // The first thing to check after a build, and deliberately the crudest. A real
+            // package built on an Apple Silicon Mac came off disk with "PSAR" and "zlib"
+            // intact and every numeric header field replaced by repeated stale bytes
+            // (f168e01c four times over). Reading that back through IBinaryReader would not
+            // necessarily catch it, because BinaryReaders.fs uses the same construct as the
+            // writer and two matching faults cancel. So this opens the file, takes the first
+            // 32 bytes, and assembles the fields from individual bytes with plain
+            // arithmetic: no IBinaryReader, no BinaryPrimitives, no Span.
+            let o = output ()
+            for package in o.Packages do
+                let name = Path.GetFileName package
+                use file = File.OpenRead package
+                let h = Array.zeroCreate<byte> 32
+                file.ReadExactly(h, 0, 32)
+
+                let be16 i = (int h[i] <<< 8) ||| int h[i + 1]
+                let be32 i =
+                    (int64 h[i] <<< 24) ||| (int64 h[i + 1] <<< 16)
+                    ||| (int64 h[i + 2] <<< 8) ||| int64 h[i + 3]
+
+                Expect.equal (Text.Encoding.ASCII.GetString(h, 0, 4)) "PSAR" $"{name}: magic"
+                Expect.equal (be16 4) 1 $"{name}: VersionMajor"
+                Expect.equal (be16 6) 4 $"{name}: VersionMinor"
+                Expect.equal (Text.Encoding.ASCII.GetString(h, 8, 4)) "zlib" $"{name}: compression method"
+                Expect.equal (be32 16) 30L $"{name}: ToCEntrySize"
+                Expect.equal (be32 24) 65536L $"{name}: BlockSizeAlloc"
+                Expect.equal (be32 28) 4L $"{name}: ArchiveFlags, 4 meaning encrypted"
+
+                // ToCLength and ToCEntryCount vary with content, so assert they are sane
+                // rather than exact. A corrupt header fails these by orders of magnitude:
+                // the observed one carried 4,050,182,172 entries.
+                let entryCount = be32 20
+                let tocLength = be32 12
+                Expect.isGreaterThan entryCount 0L $"{name}: ToCEntryCount is positive"
+                Expect.isLessThan entryCount 100_000L $"{name}: ToCEntryCount is plausible"
+                Expect.isLessThan tocLength (int64 (FileInfo(package).Length))
+                    $"{name}: ToCLength fits inside the file"
+                // What is left of the ToC after the header and the entry table is the block
+                // size table, two bytes per block at a 64 KB block size. It must be a
+                // non-negative whole number of entries.
+                let blockTableBytes = tocLength - 32L - entryCount * 30L
+                Expect.isGreaterThanOrEqual blockTableBytes 0L
+                    $"{name}: ToCLength covers the header and every entry"
+                Expect.equal (blockTableBytes % 2L) 0L
+                    $"{name}: the block size table is a whole number of 2-byte entries"
+            }
+
         test "an independent reader agrees the container is well formed" {
             // Every other check here reads the package back with the same library that wrote
             // it, so a writer and reader that are wrong together would both pass. This one
