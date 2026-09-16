@@ -13,6 +13,7 @@ open StringSmith.Pipeline
 open StringSmith.App
 open StringSmith.App.Controls
 open StringSmith.App.Model
+open StringSmith.App.Views
 
 /// Only dialog branches dereference the window; none of these tests take them.
 let private win : Window = Unchecked.defaultof<Window>
@@ -80,6 +81,96 @@ let views =
         }
     ]
 
+/// Walks a FuncUI view tree and records the number of children at every node, in order.
+/// Two models whose trees have the same shape cannot make FuncUI recycle a control into a
+/// different slot, because FuncUI matches children by index.
+module private Shape =
+    open Avalonia.FuncUI.Types
+
+    /// (path, child count) for every multi-child node, depth first. Stops at a
+    /// VariableChildren node: content inside one of those is meant to vary, and it occupies
+    /// exactly one slot in its parent however long it gets.
+    let rec private walk (path: string) (view: IView) : (string * int) list =
+        if view.ViewType = typeof<VariableChildren> then [] else
+
+        view.Attrs
+        |> List.collect (fun attr ->
+            match attr.Content with
+            | ValueNone -> []
+            | ValueSome content ->
+                match content.Content with
+                | ViewContent.Single (Some child) -> walk (path + "/.") child
+                | ViewContent.Single None -> []
+                | ViewContent.Multiple children ->
+                    (path, children.Length)
+                    :: (children |> List.mapi (fun i c -> walk $"{path}/{i}" c) |> List.concat))
+
+    let of' (view: IView) = walk (string (view.GetType().Name)) view
+
+[<Tests>]
+let viewShape =
+    // The bug this guards against, twice shipped: FuncUI matches children by index, so a
+    // children list that changes length between renders shifts every sibling after it.
+    // The control that was rendering field N then gets field N+1's view while keeping its
+    // own change callback, so typing into one field edits its neighbour and a field's
+    // displayed text stops matching the model. Every children list must therefore keep a
+    // constant length across model states; anything variable belongs inside a container.
+    testList "view tree shape is invariant across model states" [
+        let states () =
+            let noDeps = initialModel
+            let deps = initialModel |> up (DepsChecked allFound)
+            let depsMissing = initialModel |> up (DepsChecked { FFmpeg = Missing [ "/a" ]; FFprobe = Missing [ "/b" ]; Wwise = Missing [ "/c" ] })
+            let loaded = loaded ()
+            let ready = ready ()
+            let readyBadYear = ready |> up (SetYear "abc")
+            let readySynced = ready |> ups [ SetOffset "1200"; SetScale "1.0074" ]
+            let advanced = ready |> ups [ ToggleAdvancedSync; SetNewAnchorBar "1"; SetNewAnchorSeconds "0.5"; AddAnchor ]
+            let noPlatforms = ready |> ups [ TogglePC; ToggleMac ]
+            [ "no deps", noDeps; "deps ok", deps; "deps missing", depsMissing
+              "tab loaded", loaded; "ready", ready; "invalid year", readyBadYear
+              "synced", readySynced; "advanced sync", advanced; "no platforms", noPlatforms ]
+
+        // Sections whose content list is the same in both branches, so a shape change can
+        // only come from a conditional child. These are the ones that bit us.
+        //
+        // `tracks` and `sync` render two structurally different branches depending on
+        // whether a tab/audio is loaded; crossing that boundary replaces the subtree
+        // wholesale rather than shifting siblings, so they are checked only across the
+        // states where their real branch is live.
+        let withScore () = states () |> List.filter (fun (l, _) -> l <> "no deps" && l <> "deps ok" && l <> "deps missing")
+        let withAudio () = withScore () |> List.filter (fun (l, _) -> l <> "tab loaded")
+
+        // Not checked as a whole window: `tracks` and `sync` swap between a short disabled
+        // layout and a full one, which APPENDS children rather than inserting among them.
+        // Appending is harmless — only a change in the middle of a list shifts the indices
+        // of siblings after it — but a flat whole-tree comparison cannot tell the two apart.
+        // The per-section checks below are where the real invariant lives, and they are the
+        // ones that catch the bug (verified by reintroducing it).
+        for (name, render, pick) in
+            [ "metadata", Sections.metadata, states
+              "output", Sections.output, states
+              "sources", Sections.sources, states
+              "build", Sections.build, states
+              "dependencies", Sections.dependencies, states
+              "tracks", Sections.tracks, withScore
+              "sync", Sections.sync, withAudio ] do
+            test $"{name} keeps its shape" {
+                let shapes = pick () |> List.map (fun (label, m) -> label, Shape.of' (render m ignore))
+                let (baseLabel, baseShape) = shapes.Head
+                for (label, shape) in shapes.Tail do
+                    if shape <> baseShape then
+                        let diff =
+                            List.zip
+                                (baseShape |> List.truncate (min baseShape.Length shape.Length))
+                                (shape |> List.truncate (min baseShape.Length shape.Length))
+                            |> List.filter (fun (a, b) -> a <> b)
+                            |> List.truncate 4
+                        failtestf
+                            "%s: shape differs from '%s' (%d nodes vs %d). First differences: %A"
+                            label baseLabel baseShape.Length shape.Length diff
+            }
+    ]
+
 [<Tests>]
 let guardedTextBox =
     // Regression test for the bug the first macOS run found: the Year field displayed
@@ -113,6 +204,29 @@ let guardedTextBox =
             Expect.equal (List.ofSeq fired) [ "2012" ] "a later view assignment must stay silent"
         }
 
+        test "a combo box likewise ignores view-set selections but reports user ones" {
+            // The track-mapping combos capture a track index in their handlers, so the same
+            // two hazards apply: a view-originated selection must not dispatch, and the
+            // callback must be replaceable so a recycled control cannot target another track.
+            let fired = System.Collections.Generic.List<obj>()
+            let box = GuardedComboBox()
+            box.OnSelectionChangedCallback <- fired.Add
+            box.ItemsSource <- [ "Lead"; "Rhythm"; "Bass" ]
+
+            box.Suppress <- true
+            box.SelectedItem <- "Rhythm"
+            box.Suppress <- false
+            Expect.isEmpty fired "view-originated selection must not dispatch"
+
+            box.SelectedItem <- "Bass"
+            Expect.equal (List.ofSeq fired) [ box.SelectedItem ] "a user selection dispatches once"
+
+            let second = System.Collections.Generic.List<obj>()
+            box.OnSelectionChangedCallback <- second.Add
+            box.SelectedItem <- "Lead"
+            Expect.equal (List.ofSeq second) [ box.SelectedItem ] "the callback can be swapped, so recycling retargets correctly"
+        }
+
         test "a null text reaches the callback as an empty string" {
             let fired = System.Collections.Generic.List<string>()
             let box = GuardedTextBox()
@@ -140,6 +254,43 @@ let prefill =
             Expect.equal (m.Meta.Album.Value, m.Meta.Album.Source) ("Imaginaerum", FromTab) "no album tag: tab value kept"
             Expect.equal (m.Meta.Year.Value, m.Meta.Year.Source) ("2011", FromAudio) "year"
         }
+        test "typing a year clears the Year build blocker" {
+            // Reported from the video: Year visibly read 2025 while the build stayed blocked
+            // on "Year must be a number." The displayed text had drifted from the model
+            // because the keystrokes were dispatched to another field's handler. This pins
+            // the model-level contract that the UI now honours.
+            let m = ready ()
+            let cleared = { m with Meta = { m.Meta with Year = Field.empty } }
+            Expect.contains (Derive.buildBlockers cleared) "Year must be a number." "blocked while empty"
+
+            let typed = cleared |> up (SetYear "2025")
+            Expect.equal typed.Meta.Year.Value "2025" "the model took the year"
+            Expect.equal (Derive.year typed) (Some 2025) "and parses it"
+            Expect.isFalse (Derive.buildBlockers typed |> List.contains "Year must be a number.") "blocker gone"
+            Expect.isEmpty (Derive.buildBlockers typed) $"nothing else blocks: %A{Derive.buildBlockers typed}"
+        }
+
+        test "each metadata setter touches only its own field" {
+            // The reported symptom was "typing into a field edits the field above".
+            let m = ready ()
+            let check name msg (get: Model -> string) =
+                let after = m |> up msg
+                let changed =
+                    [ "Title", (fun (x: Model) -> x.Meta.Title.Value); "Artist", (fun x -> x.Meta.Artist.Value)
+                      "Album", (fun x -> x.Meta.Album.Value); "Year", (fun x -> x.Meta.Year.Value)
+                      "TuningPitch", (fun x -> x.Meta.TuningPitch); "Charter", (fun x -> x.Meta.Charter) ]
+                    |> List.filter (fun (_, f) -> f after <> f m)
+                    |> List.map fst
+                Expect.equal changed [ name ] $"{name}: exactly one field should change"
+                Expect.equal (get after) "zz" $"{name} took the value"
+            check "Title" (SetTitle "zz") (fun x -> x.Meta.Title.Value)
+            check "Artist" (SetArtist "zz") (fun x -> x.Meta.Artist.Value)
+            check "Album" (SetAlbum "zz") (fun x -> x.Meta.Album.Value)
+            check "Year" (SetYear "zz") (fun x -> x.Meta.Year.Value)
+            check "TuningPitch" (SetTuningPitch "zz") (fun x -> x.Meta.TuningPitch)
+            check "Charter" (SetCharter "zz") (fun x -> x.Meta.Charter)
+        }
+
         test "editing the tuning frequency never touches the Year field" {
             let m = ready ()
             let before = m.Meta.Year

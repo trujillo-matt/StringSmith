@@ -57,12 +57,14 @@ let view (_window: Window) (m: Model) (dispatch: Msg -> unit) : IView =
                                 StackPanel.verticalAlignment VerticalAlignment.Center
                                 StackPanel.children [
                                     depsSummary
-                                    match m.Build with
-                                    | BuildRunning p ->
-                                        ProgressBar.create [ ProgressBar.minimum 0.0; ProgressBar.maximum 100.0; ProgressBar.value p.Percent; ProgressBar.height 10.0; ProgressBar.margin (Thickness(0.0, 0.0, 16.0, 0.0)) ]
-                                        let pct = p.Percent.ToString("F0")
-                                        dim $"{p.Stage.Label}  {pct}%%"
-                                    | _ -> ()
+                                    container [
+                                        match m.Build with
+                                        | BuildRunning p ->
+                                            ProgressBar.create [ ProgressBar.minimum 0.0; ProgressBar.maximum 100.0; ProgressBar.value p.Percent; ProgressBar.height 10.0; ProgressBar.margin (Thickness(0.0, 0.0, 16.0, 0.0)) ]
+                                            let pct = p.Percent.ToString("F0")
+                                            dim $"{p.Stage.Label}  {pct}%%"
+                                        | _ -> ()
+                                    ]
                                 ]
                             ]
                         ]
