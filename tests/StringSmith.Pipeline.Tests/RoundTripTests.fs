@@ -217,6 +217,54 @@ let roundTrip =
             let ratio = float differing / float (pc.Length - headerAndIv)
             Expect.isGreaterThan ratio 0.9 $"expected almost every ciphertext byte to differ, got %.1f{ratio * 100.0}%%"
         }
+
+        test "an independent reader agrees the container is well formed" {
+            // Every other check here reads the package back with the same library that wrote
+            // it, so a writer and reader that are wrong together would both pass. This one
+            // shells out to scripts/inspect-psarc.py, which parses the container straight from
+            // the on-disk format and decrypts the table of contents with the openssl CLI: no
+            // shared code, no shared AES. It verifies the header geometry, that entry data
+            // tiles the file with no gap, overlap or tail, that every block size table slot
+            // belongs to exactly one entry, that every entry inflates to its declared length,
+            // that the name digests match, and that the header manifest carries the attribute
+            // set a shipped package carries. It is calibrated against a package built from
+            // Rocksmith2014.NET's own integration-test project, on which it reports zero.
+            let script =
+                Path.GetFullPath(Path.Combine(__SOURCE_DIRECTORY__, "..", "..", "scripts", "inspect-psarc.py"))
+            Expect.isTrue (File.Exists script) "the inspector script is in the repository"
+
+            let run (fileName: string) (args: string) =
+                try
+                    let psi = Diagnostics.ProcessStartInfo(fileName, args,
+                                                           RedirectStandardOutput = true,
+                                                           RedirectStandardError = true)
+                    match Diagnostics.Process.Start psi with
+                    | null -> None
+                    | proc ->
+                        use proc = proc
+                        let out = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd()
+                        proc.WaitForExit()
+                        Some(proc.ExitCode, out)
+                with _ ->
+                    None
+
+            match run "python3" "--version", run "openssl" "version" with
+            | None, _ | _, None ->
+                skiptest "python3 or the openssl CLI is not available"
+            | _ ->
+                let o = output ()
+                // One package at a time: the PC and Mac builds of one song deliberately share
+                // a DLC key, which the inspector reports as a collision when given both.
+                for package in o.Packages do
+                    match run "python3" $"\"{script}\" \"{package}\"" with
+                    | None ->
+                        skiptest "python3 could not be started"
+                    | Some(0, _) ->
+                        ()
+                    | Some(_, out) ->
+                        failtestf "%s failed the independent structural check:\n%s"
+                            (Path.GetFileName package) out
+        }
     ]
 
 [<Tests>]

@@ -409,6 +409,72 @@ Expected compile-time traps, all hit and fixed during this work: `Path.*` helper
 resolve only via `open`, not full qualification, and need a direct project reference from
 test projects; F# forbids `\"` inside `$"…"` holes and misparses `{DateTime.Now:HH:mm:ss}`.
 
+## The in-game lag/freeze report, and what is established about it
+
+A package StringSmith built made Rocksmith 2014 load the profile slowly and then freeze
+during DLC enumeration, with the song never appearing. What follows is what was checked,
+not what is suspected.
+
+**Established, by measurement:**
+
+- **The container is sound.** `scripts/inspect-psarc.py` parses a PSARC straight from the
+  on-disk format and decrypts the table of contents with the openssl CLI, sharing no code
+  and no AES implementation with the writer. On StringSmith's own output it reports zero
+  problems: header geometry consistent, entry data tiling the file with no gap, overlap or
+  tail, every block size table slot owned by exactly one entry, every entry inflating to
+  its declared length, every name digest matching. Every other round-trip check in this
+  repository reads a package back with the same library that wrote it, so this is the only
+  check that a writer and reader which are wrong together cannot pass. It is wired into
+  `tests/StringSmith.Pipeline.Tests` and skips cleanly where python3 or openssl is absent.
+- **The output matches the reference build.** Building Rocksmith2014.NET's own
+  `Integration_Test.rs2dlc` through the same `PackageBuilder.buildPackages` call StringSmith
+  makes produces a package with the same entry categories, the same header field values,
+  and an **identical attribute set** in both the `.hsan` header manifest and the
+  per-arrangement `.json`. Nothing StringSmith emits is missing or extra.
+- **`readToC` does not reproduce here.** The Pipeline suite is green at `cb6107a` on Linux
+  x86_64 in 2.1 seconds. That failure came from a different environment or a different build.
+- **What that exception means.** The only allocation in `Utils.readToC` whose parameter is
+  named `capacity` is `ResizeArray.init (int header.ToCEntryCount)`, which is
+  `List<T>(capacity)`. `Array.init` reports `count`, not `capacity`. So
+  `System.ArgumentOutOfRangeException: Non-negative number required. (Parameter 'capacity')`
+  means `ToCEntryCount >= 2^31` — a header that passed both the `PSAR` and `zlib` magic
+  checks and still carries a nonsensical entry count. **Nothing in the writer can produce
+  that from a completed write**: `PSARC.Edit` sets `ToCEntryCount <- uint protoEntries.Length`.
+  It points at the file on disk, not at the packing code: a truncated or partially written
+  package, a stale file, or a path that is not the package that was just built.
+  `inspect-psarc.py` reports exactly this case as a fatal error, by name.
+
+**Not established.** Whether any of this explains the freeze. No Rocksmith install, no
+macOS, and no failing package were available here, so the game-side behaviour was not
+observed and no theory about it was confirmed or falsified. What was falsified is the
+general claim that StringSmith emits malformed PSARCs: for the inputs available here, it
+does not.
+
+**A real defect found on the way, not established as the cause.** `Build.run` assigns
+`MasterId = RandomGenerator.next ()` and `PersistentId = Guid.NewGuid()` on **every build**.
+Rocksmith keys profile score data on `PersistentID`, which is why upstream regenerates IDs
+only when `PhraseLevelComparer` finds the DD levels got easier than what the profile already
+recorded, and only after asking the user (`IdResetConfig`). Rebuilding the same song in
+StringSmith therefore installs a brand new song identity every time, and repeated installs
+accumulate in the profile. That is consistent with a profile that loads slowly, but nothing
+here demonstrates it causes a freeze. The fix is to derive both IDs deterministically from
+the DLC key and the arrangement role so a rebuild keeps its identity; that is a change to
+`src/StringSmith.Pipeline/Build.fs` and has not been made.
+
+**Getting evidence from the failing package.** On the Mac, against the actual `.psarc`:
+
+```
+python3 scripts/inspect-psarc.py -v /path/to/the_p.psarc
+python3 scripts/inspect-psarc.py ~/Library/Application\ Support/Steam/.../dlc/*.psarc
+```
+
+The first says whether that specific package is structurally sound and prints every entry.
+The second is the one that discriminates between "this package is broken" and "the DLC
+folder holds two packages claiming the same identity": passing several packages reports
+`DLCKey` and `PersistentID` collisions across them. A build for both platforms produces
+`_p` and `_m` with the same DLC key and the same persistent IDs by design; only one of the
+two belongs in the game's folder.
+
 ## Open questions
 
 - **Audio sync.** A GP tempo map is beats and whole-number BPM, not absolute seconds
